@@ -1,178 +1,337 @@
-'use client'
-
-import React, { useState } from 'react'
-import { useAppDispatch, useAppSelector } from '../../store/hooks/index'
+'use client';
+import React, { useState, useEffect, useRef } from "react";
 import {
-    Popover,
-    Box,
-    Typography,
-    TextField,
-    Button,
-    Grid,
-    Divider,
-    IconButton
-} from '@mui/material'
-import SearchIcon from '@mui/icons-material/Search'
-import ClearIcon from '@mui/icons-material/Clear'
-import { setSearchType, setAdvancedSearchParams, setSearchTerm } from '../../store/slices/driverLocationSlice'
+  Box,
+  Typography,
+  TextField,
+  Button,
+  IconButton,
+  Divider,
+  Grid,
+  Popper,
+  Fade
+} from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import CloseIcon from "@mui/icons-material/Close";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import { useAppDispatch, useAppSelector } from "../../../../src/store/hooks/index";
+import { 
+  setAdvancedSearchParams, 
+  setSearchTerm, 
+  clearAllSearches,
+  setSearchType
+} from "../../../../src/store/slices/driverLocationSlice";
+import moment from "moment";
+import AppCard from "@crema/components/AppCard";
 
 const AdvancedSearch = ({ open, anchorEl, onClose }) => {
-    const dispatch = useAppDispatch()
-    const { advancedSearchParams } = useAppSelector((state) => state.driverLocation)
+  const dispatch = useAppDispatch();
+  const { advancedSearchParams } = useAppSelector((state) => state.driverLocation);
+  
+  const popoverRef = useRef(null);
+  
+  const yesterday = moment().subtract(1, 'days');
+  const formattedYesterday = yesterday.format('YYYY-MM-DD');
+  const currentDate = new Date().toISOString().split('T')[0];
 
-    const [localParams, setLocalParams] = useState(advancedSearchParams)
+  const [searchParams, setSearchParams] = useState({
+    phone: "",
+    po: "",
+    vehicle: "",
+    startDate: formattedYesterday,
+    startTime: "00:00:00",
+    endDate: currentDate,
+    endTime: "23:59:00"
+  });
 
-    const handleParamChange = (field, value) => {
-        setLocalParams(prev => ({
-            ...prev,
-            [field]: value
-        }))
+  useEffect(() => {
+    if (advancedSearchParams.phone || advancedSearchParams.po || advancedSearchParams.vehicle) {
+      setSearchParams(prev => ({
+        ...prev,
+        phone: advancedSearchParams.phone || "",
+        po: advancedSearchParams.po || "",
+        vehicle: advancedSearchParams.vehicle || "",
+        startDate: advancedSearchParams.startDate ? advancedSearchParams.startDate.split('T')[0] : formattedYesterday,
+        endDate: advancedSearchParams.endDate ? advancedSearchParams.endDate.split('T')[0] : currentDate
+      }));
+    }
+  }, [advancedSearchParams, formattedYesterday, currentDate]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(event.target) &&
+        anchorEl &&
+        !anchorEl.contains(event.target)
+      ) {
+        onClose();
+      }
+    };
+
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
     }
 
-    const handleSearch = () => {
-        dispatch(setAdvancedSearchParams(localParams))
-        dispatch(setSearchType('advanced'))
-        dispatch(setSearchTerm(localParams))
-        onClose()
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [open, anchorEl, onClose]);
+
+  const handleSearchParamChange = (field, value) => {
+    setSearchParams(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const combineDateTime = (date, time) => {
+    if (!date) return '';
+    if (!time) return `${date} 00:00:00`;
+    return `${date} ${time}`;
+  };
+
+  const handleSearch = async () => {
+    try {
+      const startDateTime = combineDateTime(searchParams.startDate, searchParams.startTime);
+      const endDateTime = combineDateTime(searchParams.endDate, searchParams.endTime);
+
+      const apiSearchParams = {
+        phone: searchParams.phone,
+        po: searchParams.po,
+        vehicle: searchParams.vehicle,
+        startDate: startDateTime,
+        endDate: endDateTime
+      };
+
+      dispatch(setSearchType('advanced'));
+      dispatch(setAdvancedSearchParams(apiSearchParams));
+      dispatch(setSearchTerm('__ADVANCED_SEARCH_ACTIVE__'));
+
+      onClose();
+    } catch (error) {
+      // Error handling can be implemented here
     }
+  };
 
-    const handleClear = () => {
-        const emptyParams = {
-            phone: '',
-            po: '',
-            vehicle: '',
-            startDate: '',
-            endDate: ''
-        }
-        setLocalParams(emptyParams)
-        dispatch(setAdvancedSearchParams(emptyParams))
-        dispatch(setSearchType('basic'))
-        dispatch(setSearchTerm(''))
-    }
+  const handleRefresh = () => {
+    setSearchParams({
+      phone: "",
+      po: "",
+      vehicle: "",
+      startDate: formattedYesterday,
+      startTime: "00:00:00",
+      endDate: currentDate,
+      endTime: "23:59:00"
+    });
 
-    const hasActiveSearch = Object.values(localParams).some(value => value !== '')
+    dispatch(clearAllSearches());
+  };
 
-    return (
-        <Popover
-            open={open}
-            anchorEl={anchorEl}
-            onClose={onClose}
-            anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'right',
-            }}
-            transformOrigin={{
-                vertical: 'top',
-                horizontal: 'right',
-            }}
-            PaperProps={{
-                sx: {
-                    width: 400,
-                    p: 3
-                }
-            }}
-        >
+  const getCurrentDate = () => {
+    return currentDate;
+  };
+
+  return (
+    <Popper
+      open={open}
+      anchorEl={anchorEl}
+      placement="bottom-end"
+      transition
+      sx={{
+        zIndex: 1300,
+        marginTop: '8px',
+        marginLeft: '8px'
+      }}
+      modifiers={[
+        {
+          name: 'offset',
+          options: {
+            offset: [0, 10],
+          },
+        },
+      ]}
+    >
+      {({ TransitionProps }) => (
+        <Fade {...TransitionProps}>
+          <AppCard>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Advanced Search
-                </Typography>
-                {hasActiveSearch && (
-                    <Button
-                        startIcon={<ClearIcon />}
-                        onClick={handleClear}
-                        size="small"
-                        color="inherit"
-                    >
-                        Clear
-                    </Button>
-                )}
+              <Typography
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontWeight: '600',
+                  fontSize: '1rem',
+                  color: 'text.primary'
+                }}
+              >
+                <FilterListIcon sx={{ mr: 1, color: '#1B2064' }} />
+                Advanced Search
+              </Typography>
+              <IconButton
+                onClick={onClose}
+                size="small"
+                sx={{
+                  color: 'text.secondary',
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                  }
+                }}
+              >
+                <CloseIcon />
+              </IconButton>
             </Box>
 
             <Divider sx={{ mb: 3 }} />
 
-            <Grid container spacing={2}>
-                <Grid item xs={12}>
-                    <TextField
-                        fullWidth
-                        label="Phone Number"
-                        value={localParams.phone}
-                        onChange={(e) => handleParamChange('phone', e.target.value)}
-                        placeholder="Enter customer phone number"
-                        size="small"
-                    />
-                </Grid>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <TextField
+                label="Phone"
+                value={searchParams.phone}
+                onChange={(e) => handleSearchParamChange('phone', e.target.value)}
+                placeholder="Enter phone number"
+                size="small"
+                fullWidth
+                variant="outlined"
+              />
 
-                <Grid item xs={12}>
-                    <TextField
-                        fullWidth
-                        label="PO Number"
-                        value={localParams.po}
-                        onChange={(e) => handleParamChange('po', e.target.value)}
-                        placeholder="Enter purchase order number"
-                        size="small"
-                    />
-                </Grid>
+              <TextField
+                label="PO Number"
+                value={searchParams.po}
+                onChange={(e) => handleSearchParamChange('po', e.target.value)}
+                placeholder="Enter PO number"
+                size="small"
+                fullWidth
+                variant="outlined"
+              />
 
-                <Grid item xs={12}>
-                    <TextField
-                        fullWidth
-                        label="Vehicle"
-                        value={localParams.vehicle}
-                        onChange={(e) => handleParamChange('vehicle', e.target.value)}
-                        placeholder="Enter vehicle make/model"
-                        size="small"
-                    />
-                </Grid>
+              <TextField
+                label="Vehicle"
+                value={searchParams.vehicle}
+                onChange={(e) => handleSearchParamChange('vehicle', e.target.value)}
+                placeholder="Enter vehicle details"
+                size="small"
+                fullWidth
+                variant="outlined"
+              />
 
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.primary', mb: 1 }}>
+                Start Date & Time
+              </Typography>
+              <Grid container spacing={2}>
                 <Grid item xs={6}>
-                    <TextField
-                        fullWidth
-                        label="Start Date"
-                        type="date"
-                        value={localParams.startDate}
-                        onChange={(e) => handleParamChange('startDate', e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        size="small"
-                    />
+                  <TextField
+                    label="Start Date"
+                    type="date"
+                    value={searchParams.startDate}
+                    onChange={(e) => handleSearchParamChange('startDate', e.target.value)}
+                    size="small"
+                    fullWidth
+                    variant="outlined"
+                    InputLabelProps={{
+                      shrink: true,
+                    }}
+                    inputProps={{
+                      max: getCurrentDate()
+                    }}
+                  />
                 </Grid>
-
                 <Grid item xs={6}>
-                    <TextField
-                        fullWidth
-                        label="End Date"
-                        type="date"
-                        value={localParams.endDate}
-                        onChange={(e) => handleParamChange('endDate', e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        size="small"
-                    />
+                  <TextField
+                    label="Start Time"
+                    type="time"
+                    value={searchParams.startTime}
+                    onChange={(e) => handleSearchParamChange('startTime', e.target.value)}
+                    size="small"
+                    fullWidth
+                    variant="outlined"
+                    InputLabelProps={{
+                      shrink: true,
+                    }}
+                    disabled={!searchParams.startDate}
+                  />
                 </Grid>
-            </Grid>
+              </Grid>
 
-            <Box sx={{ mt: 3, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                <Button
-                    onClick={onClose}
-                    color="inherit"
-                >
-                    Cancel
-                </Button>
-                <Button
-                    variant="contained"
-                    startIcon={<SearchIcon />}
-                    onClick={handleSearch}
-                    disabled={!Object.values(localParams).some(value => value !== '')}
-                >
-                    Search
-                </Button>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.primary', mb: 1 }}>
+                End Date & Time
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField
+                    label="End Date"
+                    type="date"
+                    value={searchParams.endDate}
+                    onChange={(e) => handleSearchParamChange('endDate', e.target.value)}
+                    size="small"
+                    fullWidth
+                    variant="outlined"
+                    InputLabelProps={{
+                      shrink: true,
+                    }}
+                    inputProps={{
+                      max: getCurrentDate()
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="End Time"
+                    type="time"
+                    value={searchParams.endTime}
+                    onChange={(e) => handleSearchParamChange('endTime', e.target.value)}
+                    size="small"
+                    fullWidth
+                    variant="outlined"
+                    InputLabelProps={{
+                      shrink: true,
+                    }}
+                    disabled={!searchParams.endDate}
+                  />
+                </Grid>
+              </Grid>
             </Box>
 
-            <Box sx={{ mt: 2, p: 1.5, backgroundColor: 'grey.50', borderRadius: 1 }}>
-                <Typography variant="caption" color="text.secondary">
-                    Search across multiple fields simultaneously. Leave fields empty to ignore them.
-                </Typography>
+            <Box sx={{ display: 'flex', gap: 1.5, mt: 4, justifyContent: 'space-between' }}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={handleRefresh}
+                sx={{
+                  flex: 1,
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  py: 1
+                }}
+              >
+                Reset
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<SearchIcon />}
+                onClick={handleSearch}
+                sx={{
+                  flex: 1,
+                  backgroundColor: '#1B2064',
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  py: 1,
+                  '&:hover': {
+                    backgroundColor: '#15184d'
+                  }
+                }}
+              >
+                Search
+              </Button>
             </Box>
-        </Popover>
-    )
-}
+          </AppCard>
+        </Fade>
+      )}
+    </Popper>
+  );
+};
 
-export default AdvancedSearch
+export default AdvancedSearch;

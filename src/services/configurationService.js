@@ -3,11 +3,11 @@ import { apiClient } from './api'
 
 export const configurationAPI = {
   getConfigurations: async () => {
-    return apiClient.get('/configurations')
+    return apiClient.get('/configtable')
   },
 
   updateConfiguration: async (id, payload) => {
-    return apiClient.put(`/configurations/${id}`, payload)
+    return apiClient.put(`/configtable/${id}`, payload)
   },
 }
 
@@ -15,7 +15,7 @@ export const useConfigurations = () => {
   return useQuery({
     queryKey: ['configurations'],
     queryFn: () => configurationAPI.getConfigurations(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, 
   })
 }
 

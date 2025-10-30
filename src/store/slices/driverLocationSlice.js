@@ -1,4 +1,6 @@
 import { createSlice } from '@reduxjs/toolkit';
+import { fetchTimeData } from '../../modules/userDashboard/utils/timeDataUtils';
+import { configurationAPI } from '../../services/configurationService';
 
 const initialState = {
   towReports: [],
@@ -37,6 +39,9 @@ const driverLocationSlice = createSlice({
   name: 'driverLocation',
   initialState,
   reducers: {
+    setSelectedTab: (state, action) => {
+  state.selectedTab = action.payload;
+},
     setTowReports: (state, action) => {
       state.towReports = action.payload;
     },
@@ -96,6 +101,7 @@ const driverLocationSlice = createSlice({
     },
     setAdvancedSearchParams: (state, action) => {
       state.advancedSearchParams = action.payload;
+      state.searchType = 'advanced';
     },
     updateProcessedByByPO: (state, action) => {
       const { po, processedBy } = action.payload;
@@ -118,8 +124,63 @@ const driverLocationSlice = createSlice({
         endDate: '',
       };
     },
+    setSearchResultsManually: (state, action) => {
+      state.searchResults = action.payload;
+    },
   },
 });
+
+export const performBasicSearch = (searchTerm, selectedAccount) => async (dispatch) => {
+  try {
+    dispatch(setSearchTerm(searchTerm));
+    dispatch(setSearchType('basic'));
+
+    if (!searchTerm.trim()) {
+      dispatch(setSearchResults([]));
+      return;
+    }
+
+  } catch (error) {
+    dispatch(setSearchResults([]));
+  }
+};
+
+export const performAdvancedSearch = (searchParams) => async (dispatch) => {
+  try {
+    dispatch(setSearchType('advanced'));
+    dispatch(setAdvancedSearchParams(searchParams));
+  } catch (error) {
+    dispatch(setSearchResults([]));
+  }
+};
+
+export const fetchTimeDataForAccount = (selectedAccount, accountData) => (dispatch) => {
+  try {
+    const timeData = fetchTimeData(selectedAccount, accountData);
+    dispatch(setTimeData(timeData));
+  } catch (error) {
+    dispatch(setTimeData([]));
+  }
+};
+
+export const fetchAiConfiguration = (selectedAccount) => async (dispatch) => {
+  try {
+    const configurations = await configurationAPI.getConfigurations();
+    
+    const masterFlag = configurations.find(item => item.key === "easy_tow_ai_call_mode");
+    const autoAiDispatchMode = configurations.find(item => item.key === `${selectedAccount}_dispatch_mode`);
+
+    const autoMode = masterFlag?.value && autoAiDispatchMode?.value === "automatic";
+    const semiAutoMode = masterFlag?.value && autoAiDispatchMode?.value === "semi-automatic";
+
+    dispatch(setAutoAiConfig(autoMode));
+    dispatch(setSemiAutoAiConfig(semiAutoMode));
+
+  } catch (error) {
+    dispatch(setAutoAiConfig(false));
+    dispatch(setSemiAutoAiConfig(false));
+  }
+};
 
 export const {
   setTowReports,
@@ -145,6 +206,7 @@ export const {
   updateProcessedByByPO,
   triggerSearchReset,
   clearAllSearches,
+  setSearchResultsManually,
 } = driverLocationSlice.actions;
 
 export default driverLocationSlice.reducer;

@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './api'
 
-// API functions
 export const towReportAPI = {
   getTowReports: async (params = {}) => {
     const queryParams = new URLSearchParams(params)
@@ -31,7 +30,12 @@ export const towReportAPI = {
   },
 
   advancedSearch: async (params) => {
-    const queryParams = new URLSearchParams(params)
+    const filteredParams = Object.entries(params)
+      .filter(([key, value]) => value !== '' && value !== null && value !== undefined)
+      .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+    
+    const queryParams = new URLSearchParams(filteredParams)
+    
     return apiClient.get(`/towreport/advsearch?${queryParams}`)
   },
 
@@ -64,7 +68,6 @@ export const towReportAPI = {
   },
 }
 
-// React Query Hooks
 export const useTowReports = (params = {}) => {
   return useQuery({
     queryKey: ['towReports', params],
@@ -78,7 +81,7 @@ export const useAIDashboard = (params = {}) => {
     queryKey: ['aiDashboard', params],
     queryFn: () => towReportAPI.getAIDashboard(params),
     staleTime: 10000,
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    refetchInterval: 30000,
   })
 }
 
@@ -140,6 +143,8 @@ export const useAdvancedSearch = (params) => {
     queryFn: () => towReportAPI.advancedSearch(params),
     enabled: !!(params?.phone || params?.po || params?.vehicle || params?.startDate || params?.endDate),
     staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   })
 }
 
@@ -148,7 +153,7 @@ export const useVehicleDetails = (vehicleName) => {
     queryKey: ['vehicleDetails', vehicleName],
     queryFn: () => towReportAPI.getVehicleDetails(vehicleName),
     enabled: !!vehicleName,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 300000,
   })
 }
 
@@ -156,7 +161,7 @@ export const useCallScripts = () => {
   return useQuery({
     queryKey: ['callScripts'],
     queryFn: () => towReportAPI.getCallScripts(),
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 600000,
   })
 }
 
@@ -164,7 +169,7 @@ export const useAccounts = () => {
   return useQuery({
     queryKey: ['accounts'],
     queryFn: () => towReportAPI.getAccounts(),
-    staleTime: 10 * 60 * 1000,
+    staleTime: 600000,
   })
 }
 
@@ -172,7 +177,7 @@ export const useStats = () => {
   return useQuery({
     queryKey: ['stats'],
     queryFn: () => towReportAPI.getStats(),
-    staleTime: 60000, // 1 minute
-    refetchInterval: 60000, // Refresh every minute
+    staleTime: 60000,
+    refetchInterval: 60000,
   })
 }

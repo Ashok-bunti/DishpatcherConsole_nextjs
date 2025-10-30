@@ -1,7 +1,7 @@
 import ClientRoot from './ClientLayout';
 
 export const metadata = {
-  title: 'Dispatcher Dashboard',
+  title: 'Traction',
   description: 'AI-Powered Dispatcher Console',
 };
 

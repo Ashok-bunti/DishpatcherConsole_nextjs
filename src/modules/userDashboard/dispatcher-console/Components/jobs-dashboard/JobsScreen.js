@@ -11,7 +11,8 @@ import {
   setSearchType,
   setAccountData,
   setSelectedStatusTab,
-  clearAllSearches
+  clearAllSearches,
+  setSearchResultsManually,
 } from '../../../../../store/slices/driverLocationSlice'
 import { setShowSidebar } from '../../../../../store/slices/uiSlice'
 import { Box, Typography, Tooltip, IconButton } from "@mui/material"
@@ -21,8 +22,47 @@ import JobSection from "./JobSection/JobSection"
 import JobsSidebar from "./JobsSidebar"
 import AppLoader from '../../../../../@crema/components/AppLoader/index'
 import AppHeader from "@crema/components/AppLayout/UserMiniHeader/AppHeader"
-// import StatusCountCard from '@/components/shared/StatusCountCard'
-// import JobsCountCard from '@/components/shared/JobsCountCard'
+
+const SECTION_CONFIG = {
+  ai: {
+    id: "section-ai",
+    title: "AI Calls",
+    color: "#9B1FE9",
+    filterType: "ai"
+  },
+  "non-ai": {
+    id: "section-non-ai",
+    title: "Non-AI Calls",
+    color: "#1664C0",
+    filterType: "non-ai"
+  },
+  completed: {
+    id: "section-completed",
+    title: "Completed Calls",
+    color: "#4CAF50",
+    filterType: "completed"
+  },
+  demo: {
+    id: "section-demo",
+    title: "Demo Jobs",
+    color: "#FF9800",
+    filterType: "demo"
+  },
+  "my-jobs": {
+    id: "section-my-jobs",
+    title: "My Jobs",
+    color: "#F44336",
+    filterType: "my-jobs"
+  }
+}
+
+const INITIAL_PAGINATION = {
+  ai: { page: 1, pageSize: 4 },
+  'non-ai': { page: 1, pageSize: 4 },
+  completed: { page: 1, pageSize: 4 },
+  demo: { page: 1, pageSize: 4 },
+  'my-jobs': { page: 1, pageSize: 4 },
+}
 
 export default function JobsScreen() {
   const dispatch = useAppDispatch()
@@ -33,23 +73,17 @@ export default function JobsScreen() {
     searchResults,
     searchType,
     accountData,
-    timeData
+    timeData,
+    advancedSearchParams
   } = useAppSelector((state) => state.driverLocation)
+  
   const { showSidebar } = useAppSelector((state) => state.ui)
   const { user } = useAppSelector((state) => state.auth)
 
-  const [sectionPagination, setSectionPagination] = useState({
-    ai: { page: 1, pageSize: 4 },
-    'non-ai': { page: 1, pageSize: 4 },
-    completed: { page: 1, pageSize: 4 },
-    demo: { page: 1, pageSize: 4 },
-    'my-jobs': { page: 1, pageSize: 4 },
-  })
-
+  const [sectionPagination, setSectionPagination] = useState(INITIAL_PAGINATION)
   const [statsAnchorEl, setStatsAnchorEl] = useState(null)
   const [jobsCountAnchorEl, setJobsCountAnchorEl] = useState(null)
 
-  // Main data fetch with TanStack Query
   const {
     data: dashboardData,
     isLoading: dashboardLoading,
@@ -61,34 +95,58 @@ export default function JobsScreen() {
     top: 500,
   })
 
-  // Search with TanStack Query
+  const shouldSearch = searchTerm && 
+    searchTerm.trim() !== "" && 
+    searchTerm !== '__ADVANCED_SEARCH_ACTIVE__' && 
+    searchType === 'basic'
+
   const {
     data: searchData,
     isLoading: searchLoading
   } = useSearchTowReports(
-    searchTerm && searchType === 'basic'
-      ? { search: searchTerm, account: selectedAccount }
-      : null
+    shouldSearch ? { search: searchTerm, account: selectedAccount } : null
   )
 
-  // Advanced Search
+  const shouldAdvancedSearch = useMemo(() => {
+    return searchType === 'advanced' && 
+      advancedSearchParams && 
+      (
+        advancedSearchParams.phone || 
+        advancedSearchParams.po || 
+        advancedSearchParams.vehicle || 
+        advancedSearchParams.startDate || 
+        advancedSearchParams.endDate
+      )
+  }, [searchType, advancedSearchParams])
+
   const {
     data: advancedSearchData,
-    isLoading: advancedSearchLoading
+    isLoading: advancedSearchLoading,
+    error: advancedSearchError
   } = useAdvancedSearch(
-    searchType === 'advanced' ? {
-      ...searchTerm,
+    shouldAdvancedSearch ? {
+      ...advancedSearchParams,
       account: selectedAccount
     } : null
   )
 
-  // Accounts data
   const { data: accountsData } = useAccounts()
-
-  // Stats data
   const { data: statsData } = useStats()
 
-  // Update Redux store when data changes
+  const hasActiveSearch = useMemo(() => {
+    if (searchType === 'advanced') {
+      return shouldAdvancedSearch
+    }
+    return !!(searchTerm && 
+      searchTerm.trim() !== "" && 
+      searchTerm !== '__ADVANCED_SEARCH_ACTIVE__' && 
+      searchType === 'basic')
+  }, [searchTerm, searchType, shouldAdvancedSearch])
+
+  const isSearching = useMemo(() => {
+    return hasActiveSearch && (searchLoading || advancedSearchLoading)
+  }, [hasActiveSearch, searchLoading, advancedSearchLoading])
+
   useEffect(() => {
     if (dashboardData?.value) {
       dispatch(setTowReports(dashboardData.value))
@@ -96,16 +154,60 @@ export default function JobsScreen() {
   }, [dashboardData, dispatch])
 
   useEffect(() => {
-    if (searchData) {
-      dispatch(setSearchResults(searchData))
+    if (searchData && shouldSearch) {
+      let resultsArray = []
+
+      if (searchData && typeof searchData === 'object' && !Array.isArray(searchData)) {
+        if (searchData._id || searchData.id || searchData.po) {
+          resultsArray = [searchData]
+        } else if (searchData.success && Array.isArray(searchData.data)) {
+          resultsArray = searchData.data
+        } else if (Array.isArray(searchData.value)) {
+          resultsArray = searchData.value
+        }
+      } else if (Array.isArray(searchData)) {
+        resultsArray = searchData
+      }
+
+      dispatch(setSearchResultsManually(resultsArray))
     }
-  }, [searchData, dispatch])
+  }, [searchData, shouldSearch, dispatch])
 
   useEffect(() => {
-    if (advancedSearchData) {
-      dispatch(setSearchResults(advancedSearchData))
+    if (advancedSearchData && shouldAdvancedSearch) {
+      let resultsArray = []
+
+      if (advancedSearchData && 
+          typeof advancedSearchData === 'object' && 
+          !Array.isArray(advancedSearchData) &&
+          advancedSearchData.success === true && 
+          Array.isArray(advancedSearchData.data)) {
+        resultsArray = advancedSearchData.data
+      } else if (Array.isArray(advancedSearchData)) {
+        resultsArray = advancedSearchData
+      } else if (advancedSearchData && Array.isArray(advancedSearchData.value)) {
+        resultsArray = advancedSearchData.value
+      } else if (advancedSearchData && 
+                typeof advancedSearchData === 'object' && 
+                !Array.isArray(advancedSearchData) &&
+                (advancedSearchData._id || advancedSearchData.id || advancedSearchData.po)) {
+        resultsArray = [advancedSearchData]
+      }
+
+      dispatch(setSearchResultsManually(resultsArray))
     }
-  }, [advancedSearchData, dispatch])
+  }, [advancedSearchData, shouldAdvancedSearch, dispatch])
+
+  useEffect(() => {
+    if (!searchTerm || 
+        searchTerm.trim() === "" || 
+        searchTerm === '__ADVANCED_SEARCH_ACTIVE__') {
+      if (searchType !== 'advanced') {
+        dispatch(setSearchResults([]))
+        dispatch(setSearchType(''))
+      }
+    }
+  }, [searchTerm, searchType, dispatch])
 
   useEffect(() => {
     if (accountsData?.results) {
@@ -139,54 +241,94 @@ export default function JobsScreen() {
     dispatch(setSelectedStatusTab(tabId))
   }
 
-  // Data categorization logic
   const categorizedData = useMemo(() => {
-    const data = searchType !== 'basic' && searchResults.length > 0 ? searchResults : (dashboardData?.value || [])
-
-    if (!Array.isArray(data)) return {
-      ai: [],
-      'non-ai': [],
-      completed: [],
-      demo: [],
-      'my-jobs': []
-    }
-
+    const data = hasActiveSearch ? searchResults : (dashboardData?.value || [])
     const loggedInUserId = user?.id
+    const isSearchMode = hasActiveSearch && data.length > 0
 
-    return {
-      ai: data.filter(item =>
-        item?.account === selectedAccount &&
-        item?.ai_call_disabled === false &&
-        item?.tx_job_status !== "completed" &&
-        item?.cx_call !== "ai_call_failed" &&
-        item?.easy_tow?.responseText?.CallScoreReview !== "Negative" &&
-        item?.easy_tow?.responseText?.CallScoreReview !== "Neutral"
-      ),
-
-      'non-ai': data.filter(item =>
-        (item?.ai_call_disabled === true && item?.tx_job_status !== "completed") ||
-        (item?.escalated === true &&
-          item?.tx_job_status !== "completed" &&
-          ["ai_call_failed", "ended"].includes(item?.cx_call) &&
-          (item?.easy_tow?.responseText?.CallScoreReview === "Negative" ||
-            item?.easy_tow?.responseText?.CallScoreReview === "Neutral"))
-      ),
-
-      completed: data.filter(item => item?.tx_job_status === "completed"),
-
-      demo: data.filter(item =>
-        item?.po?.startsWith("PO-") &&
-        item?.tx_job_status !== "completed"
-      ),
-
-      'my-jobs': data.filter(item =>
-        item?.processed_by?._id === loggedInUserId &&
-        (item?.tx_job_status !== "completed" || item?.tx_job_status === "completed")
-      )
+    if (!Array.isArray(data)) {
+      return {
+        ai: [],
+        'non-ai': [],
+        completed: [],
+        demo: [],
+        'my-jobs': []
+      }
     }
-  }, [dashboardData, searchResults, searchType, selectedAccount, user])
 
-  // Section display data with pagination
+    const categorized = {
+      ai: data.filter(item => {
+        if (!item) return false
+        
+        const isCorrectAccount = item?.account === selectedAccount
+        const isNotCompleted = item?.tx_job_status !== "completed"
+        const isAiEnabled = item?.ai_call_disabled === false
+        const notFailed = item?.cx_call !== "ai_call_failed"
+        const notNegative = item?.easy_tow?.responseText?.CallScoreReview !== "Negative"
+        const notNeutral = item?.easy_tow?.responseText?.CallScoreReview !== "Neutral"
+        
+        if (isSearchMode) {
+          return isCorrectAccount && isAiEnabled && isNotCompleted && notFailed
+        }
+        
+        return isCorrectAccount && isAiEnabled && isNotCompleted && notFailed && notNegative && notNeutral
+      }),
+
+      'non-ai': data.filter(item => {
+        if (!item) return false
+        
+        const isCorrectAccount = item?.account === selectedAccount
+        const isNotCompleted = item?.tx_job_status !== "completed"
+        const isAiDisabled = item?.ai_call_disabled === true
+        const isEscalated = item?.escalated === true
+        const isFailed = ["ai_call_failed", "ended"].includes(item?.cx_call)
+        const isNegativeOrNeutral = ["Negative", "Neutral"].includes(
+          item?.easy_tow?.responseText?.CallScoreReview
+        )
+        
+        if (isSearchMode) {
+          return isCorrectAccount && ((isAiDisabled && isNotCompleted) || 
+                 (isEscalated && isNotCompleted && isFailed && isNegativeOrNeutral))
+        }
+        
+        return isCorrectAccount && ((isAiDisabled && isNotCompleted) || 
+               (isEscalated && isNotCompleted && isFailed && isNegativeOrNeutral))
+      }),
+
+      completed: data.filter(item => {
+        if (!item) return false
+        const isCorrectAccount = item?.account === selectedAccount
+        return isCorrectAccount && item?.tx_job_status === "completed"
+      }),
+
+      demo: data.filter(item => {
+        if (!item) return false
+        const isCorrectAccount = item?.account === selectedAccount
+        return isCorrectAccount && item?.po?.startsWith("PO-") && item?.tx_job_status !== "completed"
+      }),
+
+      'my-jobs': data.filter(item => {
+        if (!item) return false
+        const isCorrectAccount = item?.account === selectedAccount
+        return isCorrectAccount && item?.processed_by?._id === loggedInUserId
+      })
+    }
+
+    return categorized
+  }, [dashboardData, searchResults, hasActiveSearch, selectedAccount, user, searchType])
+
+  const filteredSections = useMemo(() => {
+    if (!hasActiveSearch) {
+      return ['ai', 'non-ai', 'completed', 'demo', 'my-jobs']
+    }
+
+    const sections = ['ai', 'non-ai', 'completed', 'demo', 'my-jobs'].filter(section =>
+      categorizedData[section] && categorizedData[section].length > 0
+    )
+
+    return sections
+  }, [categorizedData, hasActiveSearch, searchType])
+
   const sectionDisplayData = useMemo(() => {
     const getPaginatedData = (data, sectionType) => {
       const currentPage = sectionPagination[sectionType].page
@@ -206,7 +348,6 @@ export default function JobsScreen() {
     }
   }, [categorizedData, sectionPagination])
 
-  // Pagination info
   const sectionPaginationInfo = useMemo(() => {
     const getPaginationInfo = (data, sectionType) => {
       const totalRecords = data ? data.length : 0
@@ -244,17 +385,16 @@ export default function JobsScreen() {
     dispatch(setShowSidebar(!showSidebar))
   }
 
-  // Tab counts for sidebar
-  const tabCounts = {
+  const tabCounts = useMemo(() => ({
     all: (categorizedData.ai?.length || 0) + (categorizedData['non-ai']?.length || 0),
     ai: categorizedData.ai?.length || 0,
     "non-ai": categorizedData['non-ai']?.length || 0,
     completed: categorizedData.completed?.length || 0,
     demo: categorizedData.demo?.length || 0,
     "my-jobs": categorizedData['my-jobs']?.length || 0,
-  }
+  }), [categorizedData])
 
-  const isLoading = dashboardLoading || searchLoading || advancedSearchLoading
+  const isLoading = dashboardLoading || isSearching
 
   if (dashboardError) {
     return (
@@ -266,135 +406,173 @@ export default function JobsScreen() {
     )
   }
 
-  const renderAllSections = () => (
-    <>
-      <Box id="section-ai" sx={{ mb: 4, mt: -8 }}>
-        <JobSection
-          label="AI Calls"
-          color="#9B1FE9"
-          filterType="ai"
-          apiData={sectionDisplayData.ai}
-          loggedInUserId={user?.id}
-          onDataUpdate={handleDataUpdate}
-          loading={isLoading}
-          pagination={sectionPaginationInfo.ai}
-          onPageChange={(page) => handleSectionPageChange('ai', page)}
-          onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('ai', pageSize)}
-          sectionCount={categorizedData.ai?.length || 0}
-          timeData={timeData}
-        />
-      </Box>
-
-      <Box id="section-non-ai" sx={{ mb: 4 }}>
-        <JobSection
-          label="Non-AI Calls"
-          color="#1664C0"
-          filterType="non-ai"
-          apiData={sectionDisplayData['non-ai']}
-          loggedInUserId={user?.id}
-          onDataUpdate={handleDataUpdate}
-          loading={isLoading}
-          pagination={sectionPaginationInfo['non-ai']}
-          onPageChange={(page) => handleSectionPageChange('non-ai', page)}
-          onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('non-ai', pageSize)}
-          sectionCount={categorizedData['non-ai']?.length || 0}
-          timeData={timeData}
-        />
-      </Box>
-
-      <Box id="section-completed" sx={{ mb: 4 }}>
-        <JobSection
-          label="Completed Calls"
-          color="#4CAF50"
-          filterType="completed"
-          apiData={sectionDisplayData.completed}
-          loggedInUserId={user?.id}
-          onDataUpdate={handleDataUpdate}
-          loading={isLoading}
-          pagination={sectionPaginationInfo.completed}
-          onPageChange={(page) => handleSectionPageChange('completed', page)}
-          onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('completed', pageSize)}
-          sectionCount={categorizedData.completed?.length || 0}
-          timeData={timeData}
-        />
-      </Box>
-
-      <Box id="section-demo" sx={{ mb: 4 }}>
-        <JobSection
-          label="Demo Jobs"
-          color="#FF9800"
-          filterType="demo"
-          apiData={sectionDisplayData.demo}
-          loggedInUserId={user?.id}
-          onDataUpdate={handleDataUpdate}
-          loading={isLoading}
-          pagination={sectionPaginationInfo.demo}
-          onPageChange={(page) => handleSectionPageChange('demo', page)}
-          onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('demo', pageSize)}
-          sectionCount={categorizedData.demo?.length || 0}
-          timeData={timeData}
-        />
-      </Box>
-
-      <Box id="section-my-jobs" sx={{ mb: 4 }}>
-        <JobSection
-          label="My Jobs"
-          color="#F44336"
-          filterType="my-jobs"
-          apiData={sectionDisplayData['my-jobs']}
-          loggedInUserId={user?.id}
-          onDataUpdate={handleDataUpdate}
-          loading={isLoading}
-          pagination={sectionPaginationInfo['my-jobs']}
-          onPageChange={(page) => handleSectionPageChange('my-jobs', page)}
-          onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('my-jobs', pageSize)}
-          sectionCount={categorizedData['my-jobs']?.length || 0}
-          timeData={timeData}
-        />
-      </Box>
-    </>
+  const renderNoResults = (message, subtitle = "") => (
+    <Box sx={{ textAlign: 'center', py: 8, mt: -8 }}>
+      <Typography variant="h6" color="text.secondary">
+        {message}
+      </Typography>
+      {subtitle && (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          {subtitle}
+        </Typography>
+      )}
+    </Box>
   )
 
-  const renderSelectedSection = () => {
-    const sectionConfig = {
-      ai: {
-        id: "section-ai",
-        title: "AI Calls",
-        color: "#9B1FE9",
-        filterType: "ai"
-      },
-      "non-ai": {
-        id: "section-non-ai",
-        title: "Non-AI Calls",
-        color: "#1664C0",
-        filterType: "non-ai"
-      },
-      completed: {
-        id: "section-completed",
-        title: "Completed Calls",
-        color: "#4CAF50",
-        filterType: "completed"
-      },
-      demo: {
-        id: "section-demo",
-        title: "Demo Jobs",
-        color: "#FF9800",
-        filterType: "demo"
-      },
-      "my-jobs": {
-        id: "section-my-jobs",
-        title: "My Jobs",
-        color: "#F44336",
-        filterType: "my-jobs"
+  const renderAllSections = () => {
+    if (isSearching) {
+      return <AppLoader />
+    }
+    
+    const sectionsToRender = hasActiveSearch
+      ? filteredSections
+      : ['ai', 'non-ai', 'completed', 'demo', 'my-jobs']
+
+    if (hasActiveSearch) {
+      if (searchResults.length === 0) {
+        return renderNoResults(
+          "No jobs found matching your search criteria",
+          "Try adjusting your search terms or filters"
+        )
+      }
+
+      if (sectionsToRender.length === 0) {
+        return renderNoResults(
+          `Found ${searchResults.length} job(s) but they don't match the current category filters`,
+          "Try selecting \"All\" tab to view all search results"
+        )
       }
     }
 
-    const config = sectionConfig[selectedStatusTab]
+    return (
+      <>
+        {sectionsToRender.includes('ai') && (
+          <Box id="section-ai" sx={{ mb: 4, mt: -8 }}>
+            <JobSection
+              label="AI Calls"
+              color="#9B1FE9"
+              filterType="ai"
+              apiData={sectionDisplayData.ai}
+              loggedInUserId={user?.id}
+              onDataUpdate={handleDataUpdate}
+              loading={isLoading}
+              pagination={sectionPaginationInfo.ai}
+              onPageChange={(page) => handleSectionPageChange('ai', page)}
+              onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('ai', pageSize)}
+              sectionCount={categorizedData.ai?.length || 0}
+              timeData={timeData}
+              isSearchResult={hasActiveSearch}
+            />
+          </Box>
+        )}
+
+        {sectionsToRender.includes('non-ai') && (
+          <Box id="section-non-ai" sx={{ mb: 4 }}>
+            <JobSection
+              label="Non-AI Calls"
+              color="#1664C0"
+              filterType="non-ai"
+              apiData={sectionDisplayData['non-ai']}
+              loggedInUserId={user?.id}
+              onDataUpdate={handleDataUpdate}
+              loading={isLoading}
+              pagination={sectionPaginationInfo['non-ai']}
+              onPageChange={(page) => handleSectionPageChange('non-ai', page)}
+              onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('non-ai', pageSize)}
+              sectionCount={categorizedData['non-ai']?.length || 0}
+              timeData={timeData}
+              isSearchResult={hasActiveSearch}
+            />
+          </Box>
+        )}
+
+        {sectionsToRender.includes('completed') && (
+          <Box id="section-completed" sx={{ mb: 4 }}>
+            <JobSection
+              label="Completed Calls"
+              color="#4CAF50"
+              filterType="completed"
+              apiData={sectionDisplayData.completed}
+              loggedInUserId={user?.id}
+              onDataUpdate={handleDataUpdate}
+              loading={isLoading}
+              pagination={sectionPaginationInfo.completed}
+              onPageChange={(page) => handleSectionPageChange('completed', page)}
+              onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('completed', pageSize)}
+              sectionCount={categorizedData.completed?.length || 0}
+              timeData={timeData}
+              isSearchResult={hasActiveSearch}
+            />
+          </Box>
+        )}
+
+        {sectionsToRender.includes('demo') && (
+          <Box id="section-demo" sx={{ mb: 4 }}>
+            <JobSection
+              label="Demo Jobs"
+              color="#FF9800"
+              filterType="demo"
+              apiData={sectionDisplayData.demo}
+              loggedInUserId={user?.id}
+              onDataUpdate={handleDataUpdate}
+              loading={isLoading}
+              pagination={sectionPaginationInfo.demo}
+              onPageChange={(page) => handleSectionPageChange('demo', page)}
+              onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('demo', pageSize)}
+              sectionCount={categorizedData.demo?.length || 0}
+              timeData={timeData}
+              isSearchResult={hasActiveSearch}
+            />
+          </Box>
+        )}
+
+        {sectionsToRender.includes('my-jobs') && (
+          <Box id="section-my-jobs" sx={{ mb: 4 }}>
+            <JobSection
+              label="My Jobs"
+              color="#F44336"
+              filterType="my-jobs"
+              apiData={sectionDisplayData['my-jobs']}
+              loggedInUserId={user?.id}
+              onDataUpdate={handleDataUpdate}
+              loading={isLoading}
+              pagination={sectionPaginationInfo['my-jobs']}
+              onPageChange={(page) => handleSectionPageChange('my-jobs', page)}
+              onRowsPerPageChange={(pageSize) => handleRowsPerPageChange('my-jobs', pageSize)}
+              sectionCount={categorizedData['my-jobs']?.length || 0}
+              timeData={timeData}
+              isSearchResult={hasActiveSearch}
+            />
+          </Box>
+        )}
+      </>
+    )
+  }
+
+  const renderSelectedSection = () => {
+    const config = SECTION_CONFIG[selectedStatusTab]
 
     if (!config) return renderAllSections()
+    
+    if (isSearching) {
+      return <AppLoader />
+    }
+    
+    const hasData = categorizedData[selectedStatusTab]?.length > 0
+    
+    if (hasActiveSearch && !hasData) {
+      return renderNoResults(
+        `No ${config.title.toLowerCase()} found matching your search criteria`,
+        "Try adjusting your search terms or switch to \"All\" to see other results"
+      )
+    }
+    
+    if (!hasData) {
+      return renderNoResults(`No ${config.title.toLowerCase()} available`)
+    }
 
     return (
-      <Box id={config.id} sx={{ mb: 0, mt:-8  }}>
+      <Box id={config.id} sx={{ mb: 0, mt: -8 }}>
         <JobSection
           label={config.title}
           color={config.color}
@@ -408,6 +586,7 @@ export default function JobsScreen() {
           onRowsPerPageChange={(pageSize) => handleRowsPerPageChange(selectedStatusTab, pageSize)}
           sectionCount={categorizedData[selectedStatusTab]?.length || 0}
           timeData={timeData}
+          isSearchResult={hasActiveSearch}
         />
       </Box>
     )
@@ -429,7 +608,6 @@ export default function JobsScreen() {
         onJobsCountClick={handleJobsCountClick}
       />
 
-      {/* Sticky Sidebar */}
       <Box
         sx={{
           position: 'fixed',
@@ -450,11 +628,11 @@ export default function JobsScreen() {
               tabCounts={tabCounts}
               selectedAccount={selectedAccount}
               isLoading={isLoading}
+              hasActiveSearch={hasActiveSearch}
             />
           </Box>
         )}
 
-        {/* Sidebar Toggle Button */}
         <Box
           sx={{
             backgroundColor: '#FFFFFF',
@@ -485,9 +663,8 @@ export default function JobsScreen() {
         </Box>
       </Box>
 
-      {/* Main Content */}
-      <Box >
-        {isLoading ? (
+      <Box>
+        {dashboardLoading && !hasActiveSearch ? (
           <AppLoader />
         ) : selectedStatusTab === "all" ? (
           renderAllSections()
@@ -495,22 +672,6 @@ export default function JobsScreen() {
           renderSelectedSection()
         )}
       </Box>
-
-      {/* Popover Components */}
-      {/* <StatusCountCard
-        open={Boolean(statsAnchorEl)}
-        anchorEl={statsAnchorEl}
-        onClose={() => setStatsAnchorEl(null)}
-        towReports={dashboardData?.value || []}
-        selectedAccount={selectedAccount}
-      />
-
-      <JobsCountCard
-        open={Boolean(jobsCountAnchorEl)}
-        anchorEl={jobsCountAnchorEl}
-        onClose={() => setJobsCountAnchorEl(null)}
-        tabCounts={tabCounts}
-      /> */}
     </Box>
   )
 }

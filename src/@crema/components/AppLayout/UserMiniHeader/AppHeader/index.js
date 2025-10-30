@@ -23,7 +23,6 @@ import {
   Divider,
   Tooltip
 } from "@mui/material"
-
 import PhoneInTalkIcon from '@mui/icons-material/PhoneInTalk'
 import SyncIcon from '@mui/icons-material/Sync'
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory'
@@ -32,27 +31,50 @@ import AdvancedSearchIcon from "@mui/icons-material/FilterList"
 import {
   setSelectedAccount,
   setSearchTerm,
-  clearAllSearches
+  clearAllSearches,
+  performBasicSearch,
+  setSearchType,
+  fetchAiConfiguration
 } from '../../../../../store/slices/driverLocationSlice'
-import AdvancedSearch from '../../../../../components/shared/AdvancedSearch'
+import { useTimeData } from '../../../../../store/hooks/useTimeData'
+import AdvancedSearch from '../../../../../modules/userDashboard/shared/AdvancedSearch'
 
 const AppHeader = ({ toggleNavCollapsed, onStatsClick, onJobsCountClick }) => {
-  const [anchorEl, setAnchorEl] = React.useState(null);
+  const [anchorEl, setAnchorEl] = useState(null);
   const [searchInput, setSearchInput] = useState("")
   const [activeSearch, setActiveSearch] = useState(false)
   const [advancedSearchAnchorEl, setAdvancedSearchAnchorEl] = useState(null)
   const [accounts, setAccounts] = useState([])
+  const [searchTimeout, setSearchTimeout] = useState(null)
 
   const dispatch = useAppDispatch()
 
   const {
     selectedAccount,
-    timeData,
     searchTerm,
     accountData,
     autoAiConfig,
-    semiAutoAiConfig
+    semiAutoAiConfig,
+    searchType
   } = useAppSelector((state) => state.driverLocation)
+
+  const timeData = useTimeData()
+
+  useEffect(() => {
+    if (selectedAccount) {
+      dispatch(fetchAiConfiguration(selectedAccount));
+    }
+  }, [selectedAccount, dispatch]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (selectedAccount) {
+        dispatch(fetchAiConfiguration(selectedAccount));
+      }
+    }, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [selectedAccount, dispatch]);
 
   useEffect(() => {
     if (accountData && accountData.length > 0) {
@@ -65,9 +87,20 @@ const AppHeader = ({ toggleNavCollapsed, onStatsClick, onJobsCountClick }) => {
   }, [accountData])
 
   useEffect(() => {
-    setSearchInput(searchTerm)
-    setActiveSearch(searchTerm !== "")
-  }, [searchTerm])
+    if (searchTerm === '__ADVANCED_SEARCH_ACTIVE__') {
+      setSearchInput("")
+      setActiveSearch(true)
+    } else if (searchType === 'basic') {
+      setSearchInput(searchTerm || "")
+      setActiveSearch(!!searchTerm && searchTerm.trim() !== "")
+    } else if (searchType === 'advanced') {
+      setSearchInput("")
+      setActiveSearch(true)
+    } else {
+      setSearchInput("")
+      setActiveSearch(false)
+    }
+  }, [searchTerm, searchType])
 
   const handleClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -80,31 +113,60 @@ const AppHeader = ({ toggleNavCollapsed, onStatsClick, onJobsCountClick }) => {
   const handleSearchChange = (e) => {
     const value = e.target.value
     setSearchInput(value)
+
+    if (searchTimeout) {
+      clearTimeout(searchTimeout)
+    }
+
+    const newTimeout = setTimeout(() => {
+      if (value.trim() === "") {
+        handleClearSearch()
+      } else {
+        dispatch(performBasicSearch(value, selectedAccount))
+      }
+    }, 500)
+    setSearchTimeout(newTimeout)
   }
 
   const handleSearch = () => {
     if (searchInput.trim() !== "") {
       setActiveSearch(true)
-      dispatch(setSearchTerm(searchInput))
+      dispatch(performBasicSearch(searchInput, selectedAccount))
     }
   }
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout)
+      }
       handleSearch()
     }
   }
 
   const handleClearSearch = () => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout)
+      setSearchTimeout(null)
+    }
+
     setSearchInput("")
-    dispatch(setSearchTerm(""))
     setActiveSearch(false)
     dispatch(clearAllSearches())
   }
 
   const handleAccountChange = (accountName) => {
     dispatch(setSelectedAccount(accountName))
+    handleClearSearch()
   }
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout)
+      }
+    }
+  }, [searchTimeout])
 
   const autoAiFlag = autoAiConfig
   const semiAutoAiFlag = semiAutoAiConfig
@@ -175,8 +237,8 @@ const AppHeader = ({ toggleNavCollapsed, onStatsClick, onJobsCountClick }) => {
             flexWrap: 'wrap'
           }}
         >
-          {timeData && timeData.length > 0 && (
-            <Box sx={{ display: "flex", alignItems: "center" }}>
+          {timeData && timeData.length > 0 ? (
+            <Box key={0} sx={{ display: "flex", alignItems: "center" }}>
               <Typography
                 variant="h4"
                 sx={{ color: "#1B2064", fontWeight: "bold", mr: 2, fontSize: "1.2rem" }}
@@ -190,6 +252,13 @@ const AppHeader = ({ toggleNavCollapsed, onStatsClick, onJobsCountClick }) => {
                 {timeData[0].zone}
               </Typography>
             </Box>
+          ) : (
+            <Typography
+              variant="h6"
+              sx={{ color: "#1B2064", fontWeight: "medium" }}
+            >
+              Loading time data...
+            </Typography>
           )}
         </Box>
 
@@ -407,10 +476,8 @@ const AppHeader = ({ toggleNavCollapsed, onStatsClick, onJobsCountClick }) => {
                     borderColor: 'transparent',
                     '&:hover, &:focus': {
                       color: theme.palette.text.primary,
-                      backgroundColor: (theme) =>
-                        alpha(theme.palette.background.default, 0.9),
-                      borderColor: (theme) =>
-                        alpha(theme.palette.text.secondary, 0.25),
+                      backgroundColor: alpha(theme.palette.background.default, 0.9),
+                      borderColor: alpha(theme.palette.text.secondary, 0.25),
                     },
                   })}
                   onClick={handleClick}
