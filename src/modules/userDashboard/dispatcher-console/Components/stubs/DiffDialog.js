@@ -1,54 +1,54 @@
-'use client'
-
-import React, { useState } from "react"
+import React, { useState } from "react";
 import {
-  Box, Typography, Grid, useMediaQuery, useTheme,
-  IconButton, Tooltip, Button, Dialog, DialogContent,
+  Box, Card, CardContent, Typography, Grid, useMediaQuery, useTheme,
+  IconButton, Tooltip, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, Snackbar, Alert, Chip, Avatar,
+  TableHead, TableRow, Paper, Snackbar, Alert, CircularProgress, Chip, Avatar,
   Divider, TextField
-} from "@mui/material"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
-import dayjs from 'dayjs'
-import utc from 'dayjs/plugin/utc'
-import DescriptionIcon from '@mui/icons-material/Description'
-import SupportAgentIcon from '@mui/icons-material/SupportAgent'
-import PersonIcon from '@mui/icons-material/Person'
+} from "@mui/material";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import DescriptionIcon from '@mui/icons-material/Description';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
+import PersonIcon from '@mui/icons-material/Person';
 
 const DiffDialog = ({ open, onClose, obj1 }) => {
-  dayjs.extend(utc)
-  
-  const obj2 = obj1?.responseText ? obj1?.responseText : {}
-  
-  const [snackbarOpen, setSnackbarOpen] = useState(false)
-  const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
+  dayjs.extend(utc);
+  console.log("object1", obj1);
+
+  const obj2 = obj1?.responseText ? obj1?.responseText : {};
+  console.log("object2", obj2);
+
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   function parseToObject(inputString) {
-    const result = {}
-    const pairs = inputString.split(';').map(pair => pair.trim()).filter(pair => pair !== '')
+    const result = {};
+    const pairs = inputString.split(';').map(pair => pair.trim()).filter(pair => pair !== '');
 
     pairs.forEach(pair => {
-      const [key, ...valueParts] = pair.split('=')
-      const keyTrimmed = key.trim()
-      let value = valueParts.join('=').trim()
+      const [key, ...valueParts] = pair.split('=');
+      const keyTrimmed = key.trim();
+      let value = valueParts.join('=').trim();
 
       if (value === 'true') {
-        value = true
+        value = true;
       } else if (value === 'false') {
-        value = false
+        value = false;
       } else if (value === '') {
-        value = ''
+        value = '';
       }
 
-      result[keyTrimmed] = value
-    })
+      result[keyTrimmed] = value;
+    });
 
-    return result
+    return result;
   }
 
-  let pData = obj2?.additionalInformation
-  let format = pData?.replace(";", '\n') || ''
+  let pData = obj2?.additionalInformation;
+  let format = pData?.replace(";", '\n') || '';
 
   const colMap = {
     purchaseOrder: "Purchase_Order",
@@ -60,7 +60,7 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
     towDestination: "Tow Destination",
     call_notes: "call_notes",
     additionalInformation: "additionalInformation"
-  }
+  };
 
   const fieldDisplayNames = {
     purchaseOrder: "Purchase Order",
@@ -72,91 +72,91 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
     call_notes: "Call Notes",
     towSource: "Tow Source",
     towDestination: "Tow Destination",
-  }
+  };
 
-  const fields = Object.keys(colMap)
+  const fields = Object.keys(colMap);
 
   const handleTranscriptClick = () => {
-    setTranscriptDialogOpen(true)
-  }
+    setTranscriptDialogOpen(true);
+  };
 
   const handleCloseTranscriptDialog = () => {
-    setTranscriptDialogOpen(false)
-  }
+    setTranscriptDialogOpen(false);
+  };
 
-  const transcript = obj1.transcript || ""
+  const transcript = obj1.transcript || "";
 
   function formatChatText(transcript) {
-    if (!transcript) return ''
+    if (!transcript) return '';
 
-    const parts = transcript.split(/(Agent:|User:)/g)
+    const parts = transcript.split(/(Agent:|User:)/g);
 
-    let result = []
+    let result = [];
     for (let i = 0; i < parts.length; i++) {
       if (parts[i] === 'Agent:' || parts[i] === 'User:') {
-        if (i > 0) result.push('\n')
+        if (i > 0) result.push('\n');
         result.push(
           <span key={i} style={{ fontWeight: 'bold' }}>
             {parts[i]}
           </span>
-        )
+        );
       } else {
-        result.push(parts[i])
+        result.push(parts[i]);
       }
     }
 
-    return result
+    return result;
   }
 
   const handleCopyText = async (text) => {
-    if (!text) return
+    if (!text) return;
 
     try {
-      await navigator.clipboard.writeText(text)
-      setSnackbarOpen(true)
+      await navigator.clipboard.writeText(text);
+      setSnackbarOpen(true);
     } catch (err) {
-      const textArea = document.createElement('textarea')
-      textArea.value = text
-      document.body.appendChild(textArea)
-      textArea.select()
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
 
       try {
-        const successful = document.execCommand('copy')
+        const successful = document.execCommand('copy');
         if (successful) {
-          setSnackbarOpen(true)
+          setSnackbarOpen(true);
         }
       } finally {
-        document.body.removeChild(textArea)
+        document.body.removeChild(textArea);
       }
     }
-  }
+  };
 
-  const reason = obj2.disconnectReason
+  const reason = obj2.disconnectReason;
 
   const parseAdditionalInfo = (infoString) => {
-    if (!infoString) return {}
+    if (!infoString) return {};
 
-    const pairs = infoString.split(';').map(pair => pair.trim())
-    const result = {}
+    const pairs = infoString.split(';').map(pair => pair.trim());
+    const result = {};
 
     pairs.forEach(pair => {
       if (pair) {
-        const [key, value] = pair.split('=').map(item => item.trim())
+        const [key, value] = pair.split('=').map(item => item.trim());
         if (key && value !== undefined) {
-          result[key] = value
+          result[key] = value;
         }
       }
-    })
+    });
 
-    return result
-  }
+    return result;
+  };
 
-  const additionalInfo = parseAdditionalInfo(obj2?.additionalInformation)
-  const isApproved = additionalInfo['Customer_Approved_Service'] === 'Yes'
-  const serviceCharge = additionalInfo['Total Service Charge'] || '000'
+  const additionalInfo = parseAdditionalInfo(obj2?.additionalInformation);
+  const isApproved = additionalInfo['Customer_Approved_Service'] === 'Yes';
+  const serviceCharge = additionalInfo['Total Service Charge'] || '000';
 
   const cleanString = (str) => {
-    if (!str) return ''
+    if (!str) return '';
     return str
       .toString()
       .trim()
@@ -164,23 +164,23 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
       .replace(/\u00A0/g, ' ')
       .replace(/\u200B/g, '')
       .replace(/\s*;?\s*$/, '')
-      .toLowerCase()
-  }
+      .toLowerCase();
+  };
 
   const normalizeAdditionalInfo = (str) => {
-    if (!str) return ''
+    if (!str) return '';
     return str
       .split(';')
       .map(item => item.trim())
       .filter(Boolean)
       .map(item => item.replace(/\s+/g, ' '))
       .sort()
-      .join(';').toLowerCase()
-  }
+      .join(';').toLowerCase();
+  };
 
   const highlightText = (text, term) => {
-    if (!term) return text
-    const parts = text.split(new RegExp(`(${term})`, "gi"))
+    if (!term) return text;
+    const parts = text.split(new RegExp(`(${term})`, "gi"));
     return parts.map((part, i) =>
       part.toLowerCase() === term.toLowerCase() ? (
         <Box
@@ -197,15 +197,15 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
       ) : (
         part
       )
-    )
-  }
+    );
+  };
 
   const areFieldsEqual = (field, val1, val2) => {
     if (field === 'additionalInformation') {
-      return normalizeAdditionalInfo(val1) === normalizeAdditionalInfo(val2)
+      return normalizeAdditionalInfo(val1) === normalizeAdditionalInfo(val2);
     }
-    return cleanString(val1) === cleanString(val2)
-  }
+    return cleanString(val1) === cleanString(val2);
+  };
 
   return (
     <>
@@ -229,7 +229,6 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
             backgroundColor: '#f8f8f8',
             padding: '20px 24px'
           }}>
-            {/* Header content */}
             <Box sx={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
@@ -288,7 +287,6 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
               </Typography>
             </Box>
 
-            {/* Chips and buttons */}
             <Box>
               <Box sx={{
                 display: 'flex',
@@ -319,6 +317,7 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                           }
                         }}
                       />
+
                       {serviceCharge !== '000' && <Typography
                         variant="body2"
                         sx={{
@@ -330,9 +329,8 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                       >
                         {serviceCharge}
                       </Typography>}
+
                     </Box>}
-                  
-                  {/* Other chips for sentiment, review, score */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <Chip
                       label={obj2?.userSentiment || 'Neutral'}
@@ -369,13 +367,130 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                     </Typography>
                   </Box>
 
-                  {/* Add other chips similarly */}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Chip
+                      label={obj2?.CallScoreReview || 'Neutral'}
+                      color={
+                        obj2?.CallScoreReview === 'Positive' ? 'success' :
+                          obj2?.CallScoreReview === 'Negative' ? 'error' : 'warning'
+                      }
+                      variant="outlined"
+                      sx={{
+                        fontWeight: 600,
+                        borderWidth: 1.5,
+                        width: '90px',
+                        height: '28px',
+                        '& .MuiChip-label': {
+                          color: obj2?.CallScoreReview === 'Positive' ? '#2e7d32' :
+                            obj2?.CallScoreReview === 'Negative' ? '#d32f2f' : '#ed6c02',
+                          fontSize: '0.8rem',
+                          width: '100%',
+                          textAlign: 'center',
+                          padding: '0px 6px'
+                        }
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        mt: 0.5,
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      Call Review
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Chip
+                      label={obj2?.CallScore || '0'}
+                      color={
+                        parseInt(obj2?.CallScore) >= 80 ? 'success' :
+                          parseInt(obj2?.CallScore) >= 50 ? 'warning' : 'error'
+                      }
+                      variant="outlined"
+                      sx={{
+                        fontWeight: 600,
+                        borderWidth: 1.5,
+                        width: '90px',
+                        height: '28px',
+                        '& .MuiChip-label': {
+                          color: parseInt(obj2?.CallScore) >= 80 ? '#2e7d32' :
+                            parseInt(obj2?.CallScore) >= 50 ? '#ed6c02' : '#d32f2f',
+                          fontSize: '0.8rem',
+                          width: '100%',
+                          textAlign: 'center',
+                          padding: '0px 6px'
+                        }
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        mt: 0.5,
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      Call Score
+                    </Typography>
+                  </Box>
                 </Box>
                 <Box sx={{
                   display: 'flex',
                   gap: 2,
                   alignItems: 'center'
                 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      sx={{
+                        fontWeight: 500,
+                        textTransform: 'none',
+                        borderWidth: '1px',
+                        height: '28px',
+                        ...(reason === 'agent_hangup' && {
+                          borderColor: '#2e7d32',
+                          color: '#2e7d32',
+                          '&:hover': {
+                            borderColor: '#2e7d32',
+                            backgroundColor: 'rgba(46, 125, 50, 0.08)',
+                          },
+                        }),
+                        ...(reason === 'user_hangup' && {
+                          borderColor: '#f57c00',
+                          color: '#f57c00',
+                          '&:hover': {
+                            borderColor: '#f57c00',
+                            backgroundColor: 'rgba(245, 124, 0, 0.08)',
+                          },
+                        }),
+                        ...(reason === 'user_switch' && {
+                          borderColor: '#1976d2',
+                          color: '#1976d2',
+                          '&:hover': {
+                            borderColor: '#1976d2',
+                            backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                          },
+                        }),
+                        ...(reason === 'max_duration_reached' ||
+                          reason === 'voicemail_reached' ? {
+                          borderColor: '#d32f2f',
+                          color: '#d32f2f',
+                          '&:hover': {
+                            borderColor: '#d32f2f',
+                            backgroundColor: 'rgba(211, 47, 47, 0.04)',
+                          },
+                        } : {}),
+                      }}
+                    >
+                      {reason}
+                    </Button>
+                  </Box>
                   <Button
                     variant="outlined"
                     color="primary"
@@ -395,7 +510,6 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
               </Box>
             </Box>
 
-            {/* Call Outcome */}
             <Box sx={{
               borderTop: '1px solid #e0e0e0',
               pt: 2,
@@ -429,6 +543,7 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                 }}
               >
                 {obj1?.responseText?.CallOutcome}
+
                 <IconButton
                   onClick={() => handleCopyText(obj1?.responseText?.CallOutcome)}
                   size="small"
@@ -445,7 +560,6 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
             </Box>
           </Box>
 
-          {/* Comparison Table */}
           <TableContainer component={Paper} sx={{ boxShadow: 'none', border: 'none' }}>
             <Table sx={{ minWidth: 650 }}>
               <TableHead>
@@ -482,10 +596,20 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                       sx={{
                         fontFamily: 'monospace',
                         fontSize: '0.9rem',
-                        backgroundColor: areFieldsEqual(field, obj1[field], obj2[colMap[field]])
-                          ? 'rgba(76, 175, 80, 0.1)'
-                          : 'rgba(244, 67, 54, 0.1)',
-                        color: areFieldsEqual(field, obj1[field], obj2[colMap[field]]) ? '#2e7d32' : '#d32f2f',
+                        backgroundColor: (() => {
+                          const currentValue = obj1[field] || (field !== 'additionalInformation' ? obj2[colMap[field]] : '');
+                          const aiValue = obj2[colMap[field]];
+
+                          return areFieldsEqual(field, currentValue, aiValue)
+                            ? 'rgba(76, 175, 80, 0.1)'
+                            : 'rgba(244, 67, 54, 0.1)';
+                        })(),
+                        color: (() => {
+                          const currentValue = obj1[field] || (field !== 'additionalInformation' ? obj2[colMap[field]] : '');
+                          const aiValue = obj2[colMap[field]];
+
+                          return areFieldsEqual(field, currentValue, aiValue) ? '#2e7d32' : '#d32f2f';
+                        })(),
                         transition: 'background-color 0.3s'
                       }}
                     >
@@ -494,8 +618,8 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                           .split(';')
                           .map(item => item.trim())
                           .filter(item => {
-                            const [_, value] = item.split('=')
-                            return value && value.trim() !== ''
+                            const [_, value] = item.split('=');
+                            return value && value.trim() !== '';
                           })
                           .map((item, index) => (
                             <p key={index} style={{ margin: 0 }}>{item}</p>
@@ -559,7 +683,6 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
         }}
       >
         <DialogContent sx={{ padding: 0 }}>
-          {/* Transcript header with search */}
           <Box
             sx={{
               background: "#f0f4f8",
@@ -603,9 +726,19 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                 },
               }}
             />
+
+            <Box
+              sx={{
+                position: "absolute",
+                bottom: 0,
+                left: "10%",
+                width: "80%",
+                height: "1px",
+                background: "#c3d1e0",
+              }}
+            />
           </Box>
 
-          {/* Transcript content */}
           <Box
             sx={{
               padding: "28px",
@@ -613,26 +746,37 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
               maxHeight: "450px",
               overflowY: "auto",
               borderBottom: "1px solid #e6eaf0",
+              "&::-webkit-scrollbar": { width: "12px" },
+              "&::-webkit-scrollbar-thumb": {
+                backgroundColor: "rgba(0,0,0,0.2)",
+                borderRadius: "4px",
+                border: "3px solid #fafbfc",
+              },
+              scrollbarWidth: "auto",
+              scrollbarColor: "rgba(0,0,0,0.2) #fafbfc",
             }}
+            tabIndex={0}
+            role="region"
+            aria-label="Call transcript content"
           >
             {(() => {
-              const transcriptText = obj1?.responseText?.transcript || " "
-              const processedTranscript = []
-              const parts = transcriptText.split(/(?=User:|Agent:)/g)
+              const transcriptText = obj1?.responseText?.transcript || " ";
+              const processedTranscript = [];
+              const parts = transcriptText.split(/(?=User:|Agent:)/g);
 
               parts.forEach((part) => {
                 if (part.startsWith("User:")) {
                   processedTranscript.push({
                     speaker: "User",
                     text: part.replace("User:", "").trim(),
-                  })
+                  });
                 } else if (part.startsWith("Agent:")) {
                   processedTranscript.push({
                     speaker: "Agent",
                     text: part.replace("Agent:", "").trim(),
-                  })
+                  });
                 }
-              })
+              });
 
               return processedTranscript.map((message, index) => {
                 if (message.speaker === "Agent") {
@@ -697,7 +841,7 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                         </Box>
                       </Box>
                     </Box>
-                  )
+                  );
                 } else if (message.speaker === "User") {
                   return (
                     <Box
@@ -762,15 +906,14 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
                         <PersonIcon fontSize="small" />
                       </Avatar>
                     </Box>
-                  )
+                  );
                 }
-                return null
-              })
+                return null;
+              });
             })()}
           </Box>
         </DialogContent>
 
-        {/* Footer */}
         <Box
           sx={{
             backgroundColor: "#f0f4f8",
@@ -817,7 +960,7 @@ const DiffDialog = ({ open, onClose, obj1 }) => {
         </Alert>
       </Snackbar>
     </>
-  )
-}
+  );
+};
 
-export default DiffDialog
+export default DiffDialog;

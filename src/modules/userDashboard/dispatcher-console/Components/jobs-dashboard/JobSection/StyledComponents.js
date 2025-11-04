@@ -1,4 +1,4 @@
-import { TableCell, styled } from "@mui/material"
+import { TableCell, styled } from "@mui/material";
 
 export const StyledTableCell = styled(TableCell)(({ theme }) => ({
     padding: "5px 10px",
@@ -10,8 +10,7 @@ export const StyledTableCell = styled(TableCell)(({ theme }) => ({
     textOverflow: "ellipsis",
 
     "&.MuiTableCell-head": {
-        backgroundColor: "#1B2064",
-        color: "#ffffff",
+        color: "#475569",
         fontSize: "0.85rem",
         textTransform: "uppercase",
         letterSpacing: "0.5px",
@@ -32,4 +31,4 @@ export const StyledTableCell = styled(TableCell)(({ theme }) => ({
             backgroundColor: "#E0E3E7",
         },
     },
-}))
+}));  

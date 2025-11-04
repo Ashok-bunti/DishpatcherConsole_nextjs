@@ -1,46 +1,52 @@
 'use client'
 
 import React, { useState } from 'react'
-import { useAppDispatch, useAppSelector } from '../../../../../store/hooks/index'
-import { useUpdateTowReport, useAIDashboard } from '../../../../../services/towReportService'
-import { setProcessedBy, updateProcessedByByPO } from '../../../../../store/slices/driverLocationSlice'
-import { showSnackbar } from '../../../../../store/slices/uiSlice'
-import { useTheme, Button, Box } from "@mui/material"
+import { Button, Box } from '@mui/material'
 import LogoutIcon from '@mui/icons-material/Logout'
+import { useAppSelector, useAppDispatch } from '../../../../../store/hooks/index'
+import { setProcessedBy, setSelectedReport } from '../../../../../store/slices/driverLocationSlice'
+import { useUpdateTowReport, useAIDashboard } from '../../../../../services/towReportService'
+import { useQueryClient } from '@tanstack/react-query'
 import AppLoader from '../../../../../@crema/components/AppLoader/index'
+import { toast } from 'react-toastify'
+import { useAuthUser } from '../../../../../@crema/hooks/AuthHooks'
 
 const ReleaseButton = ({
-  selectedReport,
+  row,
+  selectedReport: propSelectedReport,
   variant = 'contained',
   color = 'primary',
   size = 'medium',
   disabled = false,
   onSuccess,
-  ...rest
+  sx,
+  ...otherProps
 }) => {
   const dispatch = useAppDispatch()
-  const { user } = useAppSelector((state) => state.auth)
-  const { processedBy, easyCall, aiCallingEnabled } = useAppSelector((state) => state.driverLocation)
-  const theme = useTheme()
-
+  const queryClient = useQueryClient()
   const [processing, setProcessing] = useState(false)
 
-  const { mutate: updateReport } = useUpdateTowReport()
-  const { refetch: refreshDashboard } = useAIDashboard({
-    account: selectedReport?.account || "AJS",
+  const reduxSelectedReport = useAppSelector((state) => state.driverLocation.selectedReport)
+  const easyCall = useAppSelector((state) => state.driverLocation.easyCall)
+  const { user: authUser } = useAuthUser()
+
+  const currentReport = row || propSelectedReport || reduxSelectedReport
+  const processedBy = currentReport?.processed_by
+
+  const { mutateAsync: updateTowReport } = useUpdateTowReport()
+  const { refetch: refetchAIDashboard } = useAIDashboard({
+    account: currentReport?.account || 'QT-SD',
     skip: 0,
     top: 100,
   })
 
   const isCxCalled = easyCall?.purchaseOrder ? false : true
-  const loginuser = user?.email
-  const customerContact = selectedReport?.customer_contact || ""
+
+  const customerContact = currentReport?.customer_contact || ""
   const lastParenIndex = customerContact.lastIndexOf("(")
-  let customerName = customerContact
   let customerPhone = ""
 
   if (lastParenIndex !== -1) {
-    customerName = customerContact.slice(0, lastParenIndex).trim()
     customerPhone = customerContact.slice(lastParenIndex + 1).trim()
   }
 
@@ -53,60 +59,87 @@ const ReleaseButton = ({
   }
 
   const handleRelease = async () => {
-    if (!selectedReport?.id) return
+    if (!currentReport?.id) {
+      toast.error("No report selected")
+      return
+    }
 
     setProcessing(true)
-    
     try {
       const payload = {
         action: "release",
         processed_by: null,
       }
 
-      updateReport(
-        { id: selectedReport.id, payload },
-        {
-          onSuccess: (response) => {
-            dispatch(setProcessedBy({}))
-            dispatch(updateProcessedByByPO({
-              po: selectedReport.po,
-              processedBy: {}
-            }))
+      const response = await updateTowReport({
+        id: currentReport.id,
+        payload: payload
+      })
 
-            // Refresh dashboard data
-            refreshDashboard()
+      if (response?.data) {
+        const updatedReport = response.data
+        dispatch(setSelectedReport(updatedReport))
+        dispatch(setProcessedBy(null))
+        await refetchAIDashboard()
+      } else if (response?.value?.[0]) {
+        const updatedReport = response.value[0]
+        dispatch(setSelectedReport(updatedReport))
+        dispatch(setProcessedBy(null))
+        await refetchAIDashboard()
+      } else {
+        dispatch(setProcessedBy(null))
+        dispatch(setSelectedReport({
+          ...currentReport,
+          processed_by: null
+        }))
+      }
 
-            dispatch(showSnackbar({
-              message: 'Job released successfully',
-              severity: 'success'
-            }))
+      if (onSuccess) {
+        onSuccess()
+      }
 
-            onSuccess?.()
-          },
-          onError: (error) => {
-            dispatch(showSnackbar({
-              message: 'Error releasing job',
-              severity: 'error'
-            }))
-          },
-          onSettled: () => {
-            setProcessing(false)
-          }
-        }
-      )
+      await queryClient.invalidateQueries({ queryKey: ['aiDashboard'] })
+      await queryClient.invalidateQueries({ queryKey: ['towReports'] })
+
+      toast.success("Job released successfully")
 
     } catch (error) {
-      console.error("Error releasing job:", error)
-      dispatch(showSnackbar({
-        message: 'Error releasing job',
-        severity: 'error'
-      }))
+      toast.error(error?.message || "Failed to release job")
+    } finally {
       setProcessing(false)
     }
   }
 
-  // Only show if conditions are met
-  if (!isCxCalled || formattedPhone === "Invalid Number" || processedBy?.email !== loginuser) {
+  const isAcceptedByCurrentUser = () => {
+    if (!processedBy || !authUser) return false
+
+    const userIdentifiers = [
+      authUser?.email,
+      authUser?.id,
+      authUser?._id,
+      authUser?.username
+    ].filter(Boolean)
+
+    const processedByIdentifiers = [
+      processedBy?.email,
+      processedBy?.id,
+      processedBy?._id,
+      processedBy?.username
+    ].filter(Boolean)
+
+    return userIdentifiers.some(userId => 
+      processedByIdentifiers.some(processedId => 
+        userId === processedId
+      )
+    )
+  }
+
+  const shouldShowButton = 
+    isCxCalled &&
+    formattedPhone !== "Invalid Number" &&
+    isAcceptedByCurrentUser()
+
+  if (!shouldShowButton) {
     return null
   }
 
@@ -136,13 +169,19 @@ const ReleaseButton = ({
         py: 0.6,
         width: '70px',
         height: '28px',
-        borderRadius: "25px",
         mr: 2,
         backgroundColor: "#1b2064",
         color: "#fff",
-        '&:hover': { backgroundColor: "#141850" },
+        '&:hover': { 
+          backgroundColor: "#141850" 
+        },
+        '&:disabled': {
+          backgroundColor: "#9e9e9e",
+          color: "#fff",
+        },
+        ...sx,
       }}
-      {...rest}
+      {...otherProps}
     >
       {processing ? (
         <Box

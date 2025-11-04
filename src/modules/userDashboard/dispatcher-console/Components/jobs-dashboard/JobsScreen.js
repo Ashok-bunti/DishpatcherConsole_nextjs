@@ -22,6 +22,7 @@ import JobSection from "./JobSection/JobSection"
 import JobsSidebar from "./JobsSidebar"
 import AppLoader from '../../../../../@crema/components/AppLoader/index'
 import AppHeader from "@crema/components/AppLayout/UserMiniHeader/AppHeader"
+import { useAuthUser } from '../../../../../@crema/hooks/AuthHooks'
 
 const SECTION_CONFIG = {
   ai: {
@@ -78,7 +79,7 @@ export default function JobsScreen() {
   } = useAppSelector((state) => state.driverLocation)
   
   const { showSidebar } = useAppSelector((state) => state.ui)
-  const { user } = useAppSelector((state) => state.auth)
+    const { user } = useAuthUser()
 
   const [sectionPagination, setSectionPagination] = useState(INITIAL_PAGINATION)
   const [statsAnchorEl, setStatsAnchorEl] = useState(null)

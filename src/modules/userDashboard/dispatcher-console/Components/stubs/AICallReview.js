@@ -15,14 +15,18 @@ const AICallReview = ({
   disabled = false,
   ...rest
 }) => {
-  const { easyCall } = useAppSelector((state) => state.driverLocation)
   const theme = useTheme()
-
   const [diffDialogOpen, setDiffDialogOpen] = useState(false)
   const [diffData, setDiffData] = useState(null)
 
-  const isCxCompleted = easyCall?.responseText?.Purchase_Order ? true : false
-  const callScoreReview = easyCall?.responseText?.CallScoreReview
+  // Get data from Redux store
+  const driverLocationState = useAppSelector((state) => state.driverLocation)
+  
+  // Use selectedReport's easy_tow data if available, otherwise fall back to Redux state
+  const displayEasyCall = selectedReport?.easy_tow || driverLocationState.easyCall
+
+  const isCxCompleted = displayEasyCall?.responseText?.Purchase_Order ? true : false
+  const callScoreReview = displayEasyCall?.responseText?.CallScoreReview
 
   const colMap = {
     purchaseOrder: "Purchase_Order",
@@ -37,16 +41,22 @@ const AICallReview = ({
   let diffCount = 0
   const diffList = []
 
+  // First check if we have all required data
   if (isCxCompleted) {
-    const aiResponse = easyCall?.responseText
+    const aiResponse = displayEasyCall?.responseText
 
+    // Additional check that responseText is an object
     if (aiResponse && typeof aiResponse === 'object' && !Array.isArray(aiResponse)) {
       const keys = Object.keys(colMap)
 
       keys.forEach(key => {
         const aiResponseKey = colMap[key]
+
+        // Safely get values with null checks
         const aiValue = aiResponse[aiResponseKey]
-        const originalValue = easyCall[key]
+        const originalValue = displayEasyCall[key]
+
+        // Handle cases where either value might be undefined/null
         const isDiff = aiValue !== originalValue
 
         if (isDiff) {
@@ -63,7 +73,7 @@ const AICallReview = ({
 
   const handleDiffClick = async () => {
     try {
-      setDiffData(easyCall)
+      setDiffData(displayEasyCall)
       setDiffDialogOpen(true)
     } catch (error) {
       console.error("Error fetching diff data:", error)
@@ -118,7 +128,6 @@ const AICallReview = ({
         <Button
           variant="contained"
           onClick={handleDiffClick}
-          disabled={disabled}
           sx={{
             fontSize: '0.7rem',
             px: 1.5,
@@ -133,7 +142,6 @@ const AICallReview = ({
               backgroundColor: getHoverColor(),
             }
           }}
-          {...rest}
         >
           Review
         </Button>

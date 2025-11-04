@@ -66,6 +66,10 @@ export const towReportAPI = {
   getStats: async () => {
     return apiClient.get('/towreport/stats')
   },
+    updateTowReport: async ({ id, payload }) => {
+    const response = await apiClient.put(`/towreport/${id}`, payload)
+    return response.data
+  },
 }
 
 export const useTowReports = (params = {}) => {
@@ -97,11 +101,19 @@ export const useUpdateTowReport = () => {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: ({ id, payload }) => towReportAPI.updateTowReport(id, payload),
-    onSuccess: () => {
+    mutationFn: ({ id, payload }) => towReportAPI.updateTowReport({ id, payload }),
+    onSuccess: (data, variables) => {
+      // Invalidate and refetch relevant queries
       queryClient.invalidateQueries({ queryKey: ['towReports'] })
       queryClient.invalidateQueries({ queryKey: ['aiDashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['towReport', variables.id] })
+      
+      // Update the cache for the specific report
+      queryClient.setQueryData(['towReport', variables.id], data)
     },
+    onError: (error) => {
+      console.error('Error updating tow report:', error)
+    }
   })
 }
 

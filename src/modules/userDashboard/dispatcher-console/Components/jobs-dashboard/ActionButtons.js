@@ -9,12 +9,14 @@ import AcceptButton from "../../Components/stubs/AcceptButton"
 import ReleaseButton from "../../Components/stubs/ReleaseButton"
 import CloseJobButton from "./CloseJobButton"
 import MockDriverLocationProvider from "./MockDriverLocationProvider"
+import { useAuthUser } from '../../../../../@crema/hooks/AuthHooks'
 
 const ActionButtons = ({ row, onActionSuccess }) => {
     const [snackbarOpen, setSnackbarOpen] = useState(false)
     const [snackbarMessage, setSnackbarMessage] = useState('')
     const [snackbarSeverity, setSnackbarSeverity] = useState('success')
     const [optimisticData, setOptimisticData] = useState(null)
+    const { user } = useAuthUser()
 
     const displayRow = optimisticData || row
 
@@ -27,7 +29,6 @@ const ActionButtons = ({ row, onActionSuccess }) => {
     const handleActionSuccess = (actionType, updatedData = {}) => {
         if (Object.keys(updatedData).length > 0) {
             setOptimisticData({ ...row, ...updatedData })
-            
             setTimeout(() => {
                 setOptimisticData(null)
             }, 5000)
@@ -38,8 +39,8 @@ const ActionButtons = ({ row, onActionSuccess }) => {
         }
 
         if (window.dispatchEvent) {
-            window.dispatchEvent(new CustomEvent('refreshJobsData', { 
-                detail: { action: actionType, rowId: row?.id } 
+            window.dispatchEvent(new CustomEvent('refreshJobsData', {
+                detail: { action: actionType, rowId: row?.id }
             }))
         }
 
@@ -82,8 +83,20 @@ const ActionButtons = ({ row, onActionSuccess }) => {
         return initials || "-"
     }
 
+    const isAcceptedByCurrentUser = () => {
+        if (!hasProcessedBy || !user) return false
+
+        const processedBy = displayRow?.processed_by
+
+        return (
+            processedBy?.email === user?.email ||
+            processedBy?.id === user?.id ||
+            processedBy?._id === user?.id
+        )
+    }
+
     const showAcceptButton = !hasProcessedBy
-    const showReleaseButton = hasProcessedBy
+    const showReleaseButton = hasProcessedBy && isAcceptedByCurrentUser()
     const isButton1Disabled = isCompleted
 
     const isCloseDisabled = isCompleted
@@ -92,13 +105,17 @@ const ActionButtons = ({ row, onActionSuccess }) => {
     const showAIReviewButton = hasAICallData
     const isButton3Disabled = isCompleted || !hasProcessedBy
 
-    const handleAcceptSuccess = () => {
-        handleActionSuccess("Accept", { 
-            processed_by: { 
-                _id: "optimistic", 
-                displayName: "You", 
-                name: "You" 
-            } 
+    const handleAcceptSuccess = (optimisticProcessedBy) => {
+        const processedByData = optimisticProcessedBy || {
+            _id: user?.id,
+            id: user?.id,
+            email: user?.email,
+            name: user?.displayName || user?.name || user?.email,
+            displayName: user?.displayName || user?.name || user?.email
+        }
+
+        handleActionSuccess("Accept", {
+            processed_by: processedByData
         })
     }
 
@@ -144,11 +161,10 @@ const ActionButtons = ({ row, onActionSuccess }) => {
                     sx={{
                         display: "grid",
                         alignItems: "center",
-                        gridTemplateColumns: "70px 70px 70px 70px",
-                        gap: 1,
+                        gridTemplateColumns: "70px 70px 70px 0px",
+                        gap: 3,
                     }}
                 >
-                    {/* Person Initials Chip */}
                     <Button
                         variant="contained"
                         disabled
@@ -176,7 +192,7 @@ const ActionButtons = ({ row, onActionSuccess }) => {
                         {getPersonInitials()}
                     </Button>
 
-                    {/* Accept/Release Button */}
+                    {/* Button 1: Accept OR Release OR Ended */}
                     {displayRow?.cx_call === "ended" || displayRow?.tx_job_status === "completed" ? (
                         <Box>
                             <Button
@@ -203,6 +219,7 @@ const ActionButtons = ({ row, onActionSuccess }) => {
                     ) : showAcceptButton ? (
                         <Box>
                             <AcceptButton
+                                row={displayRow}
                                 selectedReport={displayRow}
                                 size="small"
                                 disabled={isButton1Disabled}
@@ -224,6 +241,7 @@ const ActionButtons = ({ row, onActionSuccess }) => {
                     ) : showReleaseButton ? (
                         <Box>
                             <ReleaseButton
+                                row={displayRow}
                                 selectedReport={displayRow}
                                 size="small"
                                 disabled={isButton1Disabled}
@@ -244,11 +262,26 @@ const ActionButtons = ({ row, onActionSuccess }) => {
                                 title={isButton1Disabled ? "Job is completed" : "Release this job"}
                             />
                         </Box>
-                    ) : (
-                        null
-                    )}
+                    ) : hasProcessedBy ? (
+                        <Box>
+                            <Button
+                                variant="contained"
+                                color="info"
+                                disabled
+                                sx={{
+                                    fontSize: '0.7rem',
+                                    px: 1.5,
+                                    py: 0.6,
+                                    minWidth: 'auto',
+                                    backgroundColor: '#B0B0B0',
+                                }}
+                            >
+                                {displayRow.processed_by?.name ? displayRow.processed_by.name.substring(0, 5) : 'Accepted'}
+                            </Button>
+                        </Box>
+                    ) : null}
 
-                    {/* Close Button */}
+                    {/* Button 2: Close (always show, enabled/disabled) */}
                     {isCloseDisabled ? (
                         <PlaceholderButton
                             text="Closed"
@@ -263,9 +296,10 @@ const ActionButtons = ({ row, onActionSuccess }) => {
                         />
                     )}
 
-                    {/* AI Call/Review Button */}
+                    {/* Button 3: AI Call OR AI Review (mutually exclusive) */}
                     {showAICallButton ? (
                         <AICallButton
+                            row={displayRow}
                             selectedReport={displayRow}
                             size="small"
                             disabled={isButton3Disabled}

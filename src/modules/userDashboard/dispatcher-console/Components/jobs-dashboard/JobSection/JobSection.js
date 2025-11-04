@@ -284,7 +284,7 @@ const JobSection = ({
                             backgroundColor: 'white'
                         }}>
                             <TableHead>
-                                <TableRow sx={{ backgroundColor: '#1B2064' }}>
+                                <TableRow>
                                     <StyledTableCell sx={{
                                         fontWeight: 'bold',
                                         fontSize: { xs: "11px", sm: "14px" },

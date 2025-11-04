@@ -7,20 +7,23 @@ import { setEasyCall } from '../../../../../store/slices/driverLocationSlice'
 import { showSnackbar } from '../../../../../store/slices/uiSlice'
 import { useTheme, Button, CircularProgress, Snackbar, Alert } from "@mui/material"
 import { Call as CallIcon } from '@mui/icons-material'
+import { useAuthUser } from '../../../../../@crema/hooks/AuthHooks'
 
 const AICallButton = ({
-  selectedReport,
+  row,
+  selectedReport: propSelectedReport,
   variant = 'contained',
   color = 'primary',
   size = 'medium',
   disabled = false,
   onSuccess,
+  sx,
   ...rest
 }) => {
   const dispatch = useAppDispatch()
-  const { user } = useAppSelector((state) => state.auth)
+  const { user: authUser } = useAuthUser()
+  const reduxSelectedReport = useAppSelector((state) => state.driverLocation.selectedReport)
   const {
-    processedBy,
     easyCall,
     aiCallingEnabled,
     flatBedAvailability,
@@ -33,15 +36,17 @@ const AICallButton = ({
   const [calledPOs, setCalledPOs] = useState({})
   const [isInitialized, setIsInitialized] = useState(false)
 
+  const currentReport = row || propSelectedReport || reduxSelectedReport
+  const processedBy = currentReport?.processed_by
+
   const { mutate: makeAICall } = useMakeAICall()
   const { refetch: refreshDashboard } = useAIDashboard({
-    account: selectedReport?.account || "AJS",
+    account: currentReport?.account || "AJS",
     skip: 0,
     top: 100,
   })
 
-  const currentPO = selectedReport?.po || ''
-  const email = user?.email
+  const currentPO = currentReport?.po || ''
 
   const extractVehicleInfo = (fullVehicleString) => {
     if (!fullVehicleString) return ""
@@ -50,11 +55,9 @@ const AICallButton = ({
   }
 
   const isPOCalled = calledPOs[currentPO] || (easyCall && easyCall.purchaseOrder === currentPO)
-  const isProcessed = processedBy && processedBy.email === email
-  const isCxCalled = isPOCalled
   const isCxCompleted = easyCall && easyCall.responseText && easyCall.purchaseOrder === currentPO
 
-  const customerContact = selectedReport?.customer_contact || ""
+  const customerContact = currentReport?.customer_contact || ""
   const lastParenIndex = customerContact?.lastIndexOf("(")
   let customerName = customerContact
   let customerPhone = ""
@@ -70,6 +73,30 @@ const AICallButton = ({
     formattedPhone = `+1 (${cleanedPhone.slice(0, 3)}) ${cleanedPhone.slice(3, 6)}-${cleanedPhone.slice(6)}`
   } else {
     formattedPhone = `Invalid Number`
+  }
+
+  const isAcceptedByCurrentUser = () => {
+    if (!processedBy || !authUser) return false
+
+    const userIdentifiers = [
+      authUser?.email,
+      authUser?.id,
+      authUser?._id,
+      authUser?.username
+    ].filter(Boolean)
+
+    const processedByIdentifiers = [
+      processedBy?.email,
+      processedBy?.id,
+      processedBy?._id,
+      processedBy?.username
+    ].filter(Boolean)
+
+    return userIdentifiers.some(userId => 
+      processedByIdentifiers.some(processedId => 
+        userId === processedId
+      )
+    )
   }
 
   useEffect(() => {
@@ -110,39 +137,37 @@ const AICallButton = ({
     
     try {
       const body = {
-        purchaseOrder: selectedReport.po || "N/A",
-        company: selectedReport.job_type === "live_data" ? selectedReport.account : selectedReport.account,
-        dispatcher: user.displayName || "N/A",
+        purchaseOrder: currentReport.po || "N/A",
+        company: currentReport.job_type === "live_data" ? currentReport.account : currentReport.account,
+        dispatcher: authUser.displayName || "N/A",
         customerName: customerName || "N/A",
         customerPhone: formattedPhone || "N/A",
-        notes: selectedReport.notes || "N/A",
-        account: selectedReport.job_type === "live_data" ? selectedReport.account_type : "Demo",
-        drivernotes: selectedReport.driver_notes || "N/A",
-        vehicleModel: extractVehicleInfo(selectedReport?.vehicle),
+        notes: currentReport.notes || "N/A",
+        account: currentReport.job_type === "live_data" ? currentReport.account_type : "Demo",
+        drivernotes: currentReport.driver_notes || "N/A",
+        vehicleModel: extractVehicleInfo(currentReport?.vehicle),
         serviceCategory: "RoadSideService",
-        reason: selectedReport.reason || "N/A",
-        towSource: selectedReport.source || "N/A",
-        towDestination: selectedReport.destination || "N/A",
+        reason: currentReport.reason || "N/A",
+        towSource: currentReport.source || "N/A",
+        towDestination: currentReport.destination || "N/A",
         flatBedTowTruckAvailable: flatBedAvailability,
         wheelLiftTowTruckAvailable: wheelLiftTowTruckAvailability,
         jobEta: selectedEta,
         customerNeedsRide: "N/A",
-        serviceType: selectedReport.driver_notes || "N/A",
-        towReportId: selectedReport.id,
+        serviceType: currentReport.driver_notes || "N/A",
+        towReportId: currentReport.id,
       }
 
       makeAICall(body, {
         onSuccess: (response) => {
           dispatch(setEasyCall(response.easyCall))
           
-          // Update called POs
           setCalledPOs(prev => {
             const updated = { ...prev, [currentPO]: true }
             localStorage.setItem('cxcalled_pos', JSON.stringify(updated))
             return updated
           })
 
-          // Refresh dashboard
           refreshDashboard()
 
           dispatch(showSnackbar({
@@ -173,9 +198,12 @@ const AICallButton = ({
   }
 
   if (!isInitialized) return null
+  const shouldShowButton = 
+    isAcceptedByCurrentUser() &&
+    !isPOCalled &&
+    formattedPhone !== "Invalid Number"
 
-  // Show AI Call button only if processed by current user and not called yet
-  if (isProcessed && !isCxCalled && semiAutoAiConfig) {
+  if (shouldShowButton) {
     return (
       <Button
         variant="contained"
@@ -191,6 +219,7 @@ const AICallButton = ({
           backgroundColor: "#2E7D32",
           color: '#fff',
           '&:hover': { backgroundColor: "#256628" },
+          ...sx,
         }}
         startIcon={
           !processing && (
@@ -214,8 +243,7 @@ const AICallButton = ({
     )
   }
 
-  // Show disabled button if called but not completed
-  if (isCxCalled && !isCxCompleted) {
+  if (isPOCalled && !isCxCompleted) {
     return (
       <Button
         variant="contained"
@@ -227,6 +255,7 @@ const AICallButton = ({
           minWidth: '70px',
           height: '28px',
           backgroundColor: "#DCDCDC",
+          ...sx,
         }}
       >
         Cx Called

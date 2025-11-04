@@ -1,120 +1,172 @@
 'use client'
 
-import React, { useState } from 'react'
-import { useAppDispatch, useAppSelector } from '../../../../../store/hooks/index'
-import { useUpdateTowReport, useAIDashboard } from '../../../../../services/towReportService'
-import { updateProcessedByByPO, setProcessedBy } from '../../../../../store/slices/driverLocationSlice'
-import { showSnackbar } from '../../../../../store/slices/uiSlice'
-import {
-  Button,
-  Box
-} from "@mui/material"
+import React, { useState, useEffect } from 'react'
+import { Button, Box } from '@mui/material'
 import LoginIcon from '@mui/icons-material/Login'
+import { useAppSelector, useAppDispatch } from '../../../../../store/hooks/index'
+import { setProcessedBy, setSelectedReport } from '../../../../../store/slices/driverLocationSlice'
+import { useUpdateTowReport, useAIDashboard } from '../../../../../services/towReportService'
+import { useConfigurationAPI } from '../../../../../services/configurationService'
 import AppLoader from '../../../../../@crema/components/AppLoader/index'
+import { useAuthMethod, useAuthUser } from '../../../../../@crema/hooks/AuthHooks';
 
 const AcceptButton = ({
+  row,
   selectedReport,
   variant = 'contained',
   color = 'primary',
   size = 'medium',
+  startIcon,
+  endIcon,
+  loading = false,
   disabled = false,
+  onClick,
   onSuccess,
   ...rest
 }) => {
   const dispatch = useAppDispatch()
-  const { user } = useAppSelector((state) => state.auth)
-  const { processedBy, semiAutoAiConfig } = useAppSelector((state) => state.driverLocation)
-  
+  const reduxSelectedReport = useAppSelector((state) => state.driverLocation.selectedReport)
+  const { semiAutoAiConfig } = useAppSelector((state) => state.driverLocation)
+  const { user, isAuthenticated } = useAuthUser();
+
   const [isProcessing, setIsProcessing] = useState(false)
-  
-  const { mutate: updateReport } = useUpdateTowReport()
-  const { refetch: refreshDashboard } = useAIDashboard({
-    account: selectedReport?.account || "AJS",
+  const [isDisabled, setIsDisabled] = useState(false)
+
+  const currentReport = row || selectedReport || reduxSelectedReport
+
+  const { mutateAsync: updateTowReport, isPending: isUpdating } = useUpdateTowReport()
+  const { refetch: refetchAIDashboard } = useAIDashboard({
+    account: currentReport?.account || 'QT-SD',
     skip: 0,
     top: 100,
   })
+  const { configurations } = useConfigurationAPI()
 
-  const loginuser = user?.email
-  const customerContact = selectedReport?.customer_contact || ""
-  const lastParenIndex = customerContact.lastIndexOf("(")
-  let customerName = customerContact
-  let customerPhone = ""
+  const processedBy = currentReport?.processed_by
+  const loginuser = user?.email || user?.id
+  const customerContact = currentReport?.customer_contact || ''
+
+  const lastParenIndex = customerContact.lastIndexOf('(')
+  let customerPhone = ''
 
   if (lastParenIndex !== -1) {
-    customerName = customerContact.slice(0, lastParenIndex).trim()
     customerPhone = customerContact.slice(lastParenIndex + 1).trim()
   }
 
-  const cleanedPhone = customerPhone.replace(/\D/g, "")
+  const cleanedPhone = customerPhone.replace(/\D/g, '')
   let formattedPhone = cleanedPhone
+
   if (cleanedPhone.length === 10) {
     formattedPhone = `+1 (${cleanedPhone.slice(0, 3)}) ${cleanedPhone.slice(3, 6)}-${cleanedPhone.slice(6)}`
   } else {
-    formattedPhone = `Invalid Number`
+    formattedPhone = 'Invalid Number'
   }
 
+  const getButtonState = async (report) => {
+    if (report?.ai_call_disabled === true) {
+      return true
+    }
+
+    try {
+      if (!configurations || configurations.length === 0) {
+        return false
+      }
+
+      const aiAccountFilters = configurations.find(
+        (config) => config.key === 'AI Account Filters'
+      )
+
+      if (!aiAccountFilters) {
+        return false
+      }
+
+      const filterValues = aiAccountFilters.value
+        .split(',')
+        .map((value) => value.trim())
+      const accountType = report?.account_type || ''
+
+      const isMatch = filterValues.some((keyword) =>
+        accountType.includes(keyword)
+      )
+
+      return isMatch
+    } catch (error) {
+      return false
+    }
+  }
+
+  useEffect(() => {
+    if (!currentReport) return
+
+    const checkButtonState = async () => {
+      const shouldDisableButton = await getButtonState(currentReport)
+      setIsDisabled(shouldDisableButton)
+    }
+
+    checkButtonState()
+  }, [currentReport, configurations])
+
   const handleAccept = async () => {
-    if (!selectedReport?.id) return
+    if (!currentReport?.id) {
+      console.error('No report ID found')
+      return
+    }
+
+    if (!user?.id) {
+      console.error('No user ID found')
+      return
+    }
 
     setIsProcessing(true)
-    
+
     try {
       const payload = {
         processed_by: user.id,
-        action: "accept"
+        action: 'accept',
       }
 
-      updateReport(
-        { id: selectedReport.id, payload },
-        {
-          onSuccess: (response) => {
-            const callData = response.value?.[0] || response
-            
-            dispatch(setProcessedBy(callData?.processed_by))
-            dispatch(updateProcessedByByPO({
-              po: selectedReport.po,
-              processedBy: callData?.processed_by
-            }))
+      const response = await updateTowReport({
+        id: currentReport.id,
+        payload: payload,
+      })
 
-            // Refresh dashboard data
-            refreshDashboard()
+      if (response?.data) {
+        const updatedReport = response.data
+        dispatch(setSelectedReport(updatedReport))
+        dispatch(setProcessedBy(updatedReport?.processed_by))
 
-            dispatch(showSnackbar({
-              message: 'Job accepted successfully',
-              severity: 'success'
-            }))
+        await refetchAIDashboard()
+      } else if (response?.value?.[0]) {
+        const updatedReport = response.value[0]
+        dispatch(setSelectedReport(updatedReport))
+        dispatch(setProcessedBy(updatedReport?.processed_by))
+        await refetchAIDashboard()
+      }
 
-            onSuccess?.()
-          },
-          onError: (error) => {
-            dispatch(showSnackbar({
-              message: 'Error accepting job',
-              severity: 'error'
-            }))
-          },
-          onSettled: () => {
-            setIsProcessing(false)
-          }
-        }
-      )
+      if (onSuccess) {
+        onSuccess()
+      }
 
+      if (onClick) {
+        onClick()
+      }
     } catch (error) {
-      console.error("Error accepting job:", error)
-      dispatch(showSnackbar({
-        message: 'Error accepting job',
-        severity: 'error'
-      }))
+      console.error('Error accepting job:', error)
+    } finally {
       setIsProcessing(false)
     }
   }
 
-  // Don't render if phone is invalid or semiAutoAiConfig is not enabled
-  if (formattedPhone === "Invalid Number" || !semiAutoAiConfig) {
+  if (!currentReport) {
     return null
   }
 
-  // If already processed by current user
-  if (processedBy?.email === loginuser) {
+  const isAcceptedByCurrentUser = processedBy && (
+    processedBy?.email === user?.email ||
+    processedBy?.id === user?.id
+  )
+
+  if (isAcceptedByCurrentUser) {
     return (
       <Button
         variant="contained"
@@ -123,9 +175,9 @@ const AcceptButton = ({
         startIcon={
           <LoginIcon
             sx={{
-              color: "#1B2064",
+              color: '#1B2064',
               fontSize: 12,
-              mt: "1px",
+              mt: '1px',
             }}
           />
         }
@@ -134,22 +186,21 @@ const AcceptButton = ({
           px: 1.5,
           py: 0.6,
           minWidth: 'auto',
-          backgroundColor: "#D9D9D9",
-          color: "#1B2064",
+          backgroundColor: '#D9D9D9',
+          color: '#1B2064',
           fontWeight: 600,
           '&.Mui-disabled': {
-            backgroundColor: "#D9D9D9",
-            color: "#1B2064",
-          }
+            backgroundColor: '#D9D9D9',
+            color: '#1B2064',
+          },
         }}
       >
-        {processedBy?.name ? processedBy.name.substring(0, 5) : "Accepted"}
+        {processedBy?.name ? processedBy.name.substring(0, 5) : 'Accepted'}
       </Button>
     )
   }
 
-  // If processed by someone else
-  if (processedBy?.email) {
+  if (processedBy?.email || processedBy?._id || processedBy?.id) {
     return (
       <Button
         variant="contained"
@@ -158,9 +209,9 @@ const AcceptButton = ({
         startIcon={
           <LoginIcon
             sx={{
-              color: "#fff",
+              color: '#fff',
               fontSize: 14,
-              mt: "1px",
+              mt: '1px',
             }}
           />
         }
@@ -169,46 +220,83 @@ const AcceptButton = ({
           px: 1.5,
           py: 0.6,
           minWidth: 'auto',
-          backgroundColor: "#B0B0B0",
+          backgroundColor: '#B0B0B0',
         }}
       >
-        {processedBy.name?.substring(0, 5) || "Taken"}
+        {processedBy?.name ? processedBy.name.substring(0, 5) : 'Accepted'}
       </Button>
     )
   }
 
-  // Main accept button
+
+  if (formattedPhone === 'Invalid Number') {
+    return null
+  }
+
+  if (isDisabled) {
+    return (
+      <Button
+        variant="contained"
+        color="error"
+        disabled
+        startIcon={
+          <LoginIcon
+            sx={{
+              color: 'gray',
+              fontSize: 14,
+              mt: '1px',
+            }}
+          />
+        }
+        sx={{
+          fontSize: '0.7rem',
+          px: 1.5,
+          py: 0.6,
+          minWidth: '70px',
+          height: '28px',
+          '&.Mui-disabled': {
+            backgroundColor: '#ffcdd2',
+            boxShadow: 'none',
+            cursor: 'not-allowed',
+            color: 'gray',
+          },
+        }}
+      >
+        Accept
+      </Button>
+    )
+  }
+
   return (
     <Button
       variant="contained"
       color="info"
       onClick={handleAccept}
-      disabled={isProcessing || disabled}
+      disabled={isProcessing || isUpdating || disabled}
       startIcon={
         <LoginIcon
           sx={{
-            color: "#1B2064",
+            color: '#1B2064',
             fontSize: 14,
-            mt: "1px",
+            mt: '1px',
           }}
         />
       }
       sx={{
         fontSize: '0.7rem',
-        boxShadow: "none",
+        boxShadow: 'none',
         px: 1.5,
         py: 0.6,
         width: '70px',
         height: '28px',
-        backgroundColor: "#E3F2FD",
-        color: "#1B2064",
-        "&:hover": {
-          backgroundColor: "#BBDEFB",
-        }
+        backgroundColor: '#E3F2FD',
+        color: '#1B2064',
+        '&:hover': {
+          backgroundColor: '#BBDEFB',
+        },
       }}
-      {...rest}
     >
-      {isProcessing ? (
+      {isProcessing || isUpdating ? (
         <Box
           sx={{
             display: 'flex',
@@ -216,13 +304,13 @@ const AcceptButton = ({
             justifyContent: 'center',
             width: '100%',
             height: '100%',
-            transform: 'scale(0.5)'
+            transform: 'scale(0.5)',
           }}
         >
           <AppLoader />
         </Box>
       ) : (
-        "Accept"
+        'Accept'
       )}
     </Button>
   )
